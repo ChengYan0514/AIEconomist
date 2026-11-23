@@ -1,4 +1,4 @@
-# Paperflow 管理端首版设计
+# AI Economist 管理端首版设计
 
 管理员在论文库查找、导入和整理原始文件，逐步完成解析和全文发布。历史论文直接接续自现有数据库。OpenAlex 元数据导入和匹配是一条可独立发起的工作流。登录页提供管理端登录和客户端入口，客户端显示待开放。
 
@@ -26,8 +26,8 @@
 | --- | --- |
 | `original_file`、`original_file_job` | 论文书目、归档信息、当前原件路径、处理状态和已有 Work 关联 |
 | `text_file`、`block`、内容块扩展表 | 历史解析登记、正文和图表资源 |
-| `source`、`work`、`work_source`、`work_author`、`openalex_source_search` | 历史来源、书目与关联的查阅 |
-| `dataset_20241125` | 新论文的来源校验和可选 OpenAlex 元数据导入 |
+| `source`、`work`、`work_source`、`work_author` | 历史来源名称和匹配候选书目 |
+| `dataset_20241125` | 出版来源搜索、来源校验和可选 OpenAlex 元数据导入 |
 
 论文列表合并未登记新版变更的历史论文与新版论文，详情按相同 ID 优先读取新版记录。旧论文在首次编辑、替换、归档或启动处理时按需登记。历史数据接续依靠查询，数据库迁移只建立新版结构。数据库边界见 [ADR 0001](adr/0001-use-existing-paperflow-schema.md)。
 

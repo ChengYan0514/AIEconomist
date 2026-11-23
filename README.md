@@ -1,4 +1,4 @@
-# Paperflow
+# AI Economist
 
 面向论文数据管理员的工作空间。管理员可以接续旧库中的论文和全文，也可以导入原件、发起 PDF 解析、发布结构化全文及关联 OpenAlex 作品。登录页提供管理端和客户端两个入口。
 
@@ -6,7 +6,7 @@
 
 需要 JDK 17、Maven、Node.js 22，以及支持 NVIDIA GPU 的 Docker Compose。复制 `.env.example` 到仓库根目录的 `.env`，将 `PAPERFLOW_DB_*` 填成旧项目的实际连接配置，将 `PAPERFLOW_LEGACY_STORAGE` 填成旧项目的 `DATA_ROOT`，并设置新版文件目录。示例里的 `127.0.0.1` 和 `/path/to/…` 要按部署替换。首次启动时填写管理员账号和至少 12 个字符的密码。账号建立后，可以从环境文件移除初始化密码。
 
-从仓库根目录启动 Paperflow 的 MinerU 容器。Compose 使用本机预装模型的镜像 `nsfc-mineru-production:4.1.3-v2`，默认绑定宿主机 GPU 0。
+从仓库根目录启动 AI Economist 的 MinerU 容器。Compose 使用本机预装模型的镜像 `nsfc-mineru-production:4.1.3-v2`，默认绑定宿主机 GPU 0。
 
 ```bash
 docker compose up -d --wait --wait-timeout 600 mineru
@@ -42,7 +42,9 @@ npm --prefix frontend run dev
 - OpenAlex 元数据由来源选定，并可限制年份。匹配优先使用唯一 DOI，其次使用精确书目。多候选可在任务详情确认。
 - 新版文件按原件修订和解析执行保存。任务中心保留预检、执行和重试记录。
 
-[首版设计](docs/design.md) · [OpenAPI 契约](docs/openapi.yaml) · [术语表](GLOSSARY.md)
+[管理端规格](docs/spec.md) · [平台调研](docs/platform-research.md) · [首版设计](docs/design.md)
+
+[数据库文档](docs/database.md) · [管理 API 指南](docs/api.md) · [OpenAPI 契约](docs/openapi.yaml) · [术语表](GLOSSARY.md)
 
 ## 验证
 

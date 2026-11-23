@@ -1,7 +1,12 @@
 openapi: 3.1.0
 info:
-  title: Paperflow 管理 API
+  title: AI Economist 管理 API
   version: 0.1.0
+  description: |
+    写请求需要 CSRF。先在同一会话中请求 GET /csrf，再将 token 送入 headerName 指定的请求头。
+    此规则也适用于登录。保存登录响应更新的 PAPERFLOW_SESSION Cookie。
+    受保护的请求在会话无效时可返回 401 AUTH_REQUIRED，CSRF 校验失败时返回 403 ACCESS_DENIED。
+    应用错误使用统一的 Error 响应结构。异步执行结果另见任务项。
 servers:
   - url: /api
 security:
@@ -43,7 +48,9 @@ paths:
                 password: {type: string, format: password}
       responses:
         '200': {$ref: '#/components/responses/Session'}
+        '400': {$ref: '#/components/responses/Error'}
         '401': {$ref: '#/components/responses/Error'}
+        '403': {$ref: '#/components/responses/Error'}
     delete:
       operationId: logout
       responses:
@@ -60,7 +67,7 @@ paths:
               required: [currentPassword, newPassword]
               properties:
                 currentPassword: {type: string, format: password}
-                newPassword: {type: string, format: password, minLength: 12}
+                newPassword: {type: string, format: password, minLength: 12, description: UTF-8 编码长度最多 72 字节}
       responses:
         '204': {description: 密码已更新并结束当前会话}
         '400': {$ref: '#/components/responses/Error'}
@@ -88,6 +95,7 @@ paths:
                       items:
                         type: array
                         items: {$ref: '#/components/schemas/Paper'}
+        '400': {$ref: '#/components/responses/Error'}
     post:
       operationId: uploadPaper
       requestBody:
@@ -99,10 +107,12 @@ paths:
                 - {$ref: '#/components/schemas/Metadata'}
                 - type: object
                   required: [file]
-                  properties: {file: {type: string, format: binary}}
+                  properties: {file: {type: string, format: binary, description: PDF，单个原件上限 100 MiB}}
       responses:
         '201': {$ref: '#/components/responses/Paper'}
+        '400': {$ref: '#/components/responses/Error'}
         '409': {$ref: '#/components/responses/Error'}
+        '413': {$ref: '#/components/responses/Error'}
   /papers/export:
     get:
       operationId: exportPapers
@@ -119,6 +129,7 @@ paths:
           content:
             text/csv:
               schema: {type: string, format: binary}
+        '400': {$ref: '#/components/responses/Error'}
   /papers/{paperId}:
     parameters: [{$ref: '#/components/parameters/PaperId'}]
     get:
@@ -128,6 +139,7 @@ paths:
         '404': {$ref: '#/components/responses/Error'}
     patch:
       operationId: editPaper
+      description: 提交完整书目字段。省略可选书目字段会清除原值。
       requestBody:
         required: true
         content:
@@ -140,6 +152,8 @@ paths:
                   properties: {version: {type: integer, format: int64}}
       responses:
         '200': {$ref: '#/components/responses/Paper'}
+        '400': {$ref: '#/components/responses/Error'}
+        '404': {$ref: '#/components/responses/Error'}
         '409': {$ref: '#/components/responses/Error'}
   /papers/{paperId}/archive:
     parameters: [{$ref: '#/components/parameters/PaperId'}, {$ref: '#/components/parameters/Version'}]
@@ -147,11 +161,15 @@ paths:
       operationId: archivePaper
       responses:
         '200': {$ref: '#/components/responses/Paper'}
+        '400': {$ref: '#/components/responses/Error'}
+        '404': {$ref: '#/components/responses/Error'}
         '409': {$ref: '#/components/responses/Error'}
     delete:
       operationId: restorePaper
       responses:
         '200': {$ref: '#/components/responses/Paper'}
+        '400': {$ref: '#/components/responses/Error'}
+        '404': {$ref: '#/components/responses/Error'}
         '409': {$ref: '#/components/responses/Error'}
   /papers/{paperId}/file:
     parameters: [{$ref: '#/components/parameters/PaperId'}]
@@ -159,7 +177,7 @@ paths:
       operationId: originalFile
       responses:
         '200':
-          description: PDF 在线预览，其余历史类型作为附件返回
+          description: PDF 在线预览，其余原件类型作为附件返回
           content:
             application/pdf:
               schema: {type: string, format: binary}
@@ -176,10 +194,13 @@ paths:
             schema:
               type: object
               required: [file]
-              properties: {file: {type: string, format: binary}}
+              properties: {file: {type: string, format: binary, description: PDF，单个原件上限 100 MiB}}
       responses:
         '200': {$ref: '#/components/responses/Paper'}
+        '400': {$ref: '#/components/responses/Error'}
+        '404': {$ref: '#/components/responses/Error'}
         '409': {$ref: '#/components/responses/Error'}
+        '413': {$ref: '#/components/responses/Error'}
   /papers/{paperId}/blocks:
     parameters: [{$ref: '#/components/parameters/PaperId'}]
     get:
@@ -197,6 +218,8 @@ paths:
                       items:
                         type: array
                         items: {$ref: '#/components/schemas/Block'}
+        '400': {$ref: '#/components/responses/Error'}
+        '404': {$ref: '#/components/responses/Error'}
   /papers/{paperId}/blocks/{sequence}/asset:
     parameters:
       - {$ref: '#/components/parameters/PaperId'}
@@ -204,7 +227,18 @@ paths:
     get:
       operationId: blockAsset
       responses:
-        '200': {description: 当前全文块登记的图片}
+        '200':
+          description: 当前全文块登记的图片
+          content:
+            image/png:
+              schema: {type: string, format: binary}
+            image/jpeg:
+              schema: {type: string, format: binary}
+            image/gif:
+              schema: {type: string, format: binary}
+            image/webp:
+              schema: {type: string, format: binary}
+        '400': {$ref: '#/components/responses/Error'}
         '404': {$ref: '#/components/responses/Error'}
   /papers/{paperId}/match:
     parameters: [{$ref: '#/components/parameters/PaperId'}]
@@ -222,6 +256,8 @@ paths:
                 version: {type: integer, format: int64}
       responses:
         '200': {$ref: '#/components/responses/Paper'}
+        '400': {$ref: '#/components/responses/Error'}
+        '404': {$ref: '#/components/responses/Error'}
         '409': {$ref: '#/components/responses/Error'}
   /sources:
     get:
@@ -235,12 +271,14 @@ paths:
             application/json:
               schema:
                 type: array
+                maxItems: 25
                 items:
                   type: object
                   required: [sourceId, name]
                   properties:
                     sourceId: {type: string}
                     name: {type: string}
+        '400': {$ref: '#/components/responses/Error'}
   /imports:
     post:
       operationId: preflightOriginals
@@ -251,16 +289,19 @@ paths:
             schema:
               type: object
               required: [file]
-              properties: {file: {type: string, format: binary}}
+              properties: {file: {type: string, format: binary, description: ZIP，上限 256 MiB}}
       responses:
         '201': {$ref: '#/components/responses/Job'}
         '400': {$ref: '#/components/responses/Error'}
+        '413': {$ref: '#/components/responses/Error'}
   /imports/{jobId}/confirm:
     parameters: [{$ref: '#/components/parameters/JobId'}]
     post:
       operationId: confirmOriginals
       responses:
         '202': {$ref: '#/components/responses/Job'}
+        '400': {$ref: '#/components/responses/Error'}
+        '404': {$ref: '#/components/responses/Error'}
         '409': {$ref: '#/components/responses/Error'}
   /jobs:
     get:
@@ -269,7 +310,10 @@ paths:
         - {$ref: '#/components/parameters/Page'}
         - {$ref: '#/components/parameters/Size'}
         - {name: kind, in: query, schema: {$ref: '#/components/schemas/JobKind'}}
-        - {name: state, in: query, schema: {$ref: '#/components/schemas/JobState'}}
+        - name: state
+          in: query
+          description: 按任务状态精确筛选。使用 JobState 中的值，其他非空值返回空列表。
+          schema: {type: string}
       responses:
         '200':
           description: 操作记录分页
@@ -282,6 +326,7 @@ paths:
                       items:
                         type: array
                         items: {$ref: '#/components/schemas/Job'}
+        '400': {$ref: '#/components/responses/Error'}
     post:
       operationId: startJob
       requestBody:
@@ -295,14 +340,16 @@ paths:
                 kind: {type: string, enum: [PARSE, PUBLISH, MATCH, METADATA]}
                 paperIds:
                   type: array
-                  uniqueItems: true
-                  items: {type: string}
+                  description: 服务端将重复论文 ID 去重。
+                  items: {type: string, minLength: 1, maxLength: 255}
                 sourceId: {type: string}
                 yearFrom: {type: integer, minimum: 1000, maximum: 9999}
                 yearTo: {type: integer, minimum: 1000, maximum: 9999}
-              description: 匹配、解析和全文导入接受所选论文或一个出版来源及可选年份范围。METADATA 使用来源和可选年份。
+              description: 匹配、解析和全文导入接受非空的 paperIds 或一个出版来源，二选一。仅按出版来源处理时可提供年份范围。METADATA 使用来源和可选年份。
       responses:
         '202': {$ref: '#/components/responses/Job'}
+        '400': {$ref: '#/components/responses/Error'}
+        '404': {$ref: '#/components/responses/Error'}
         '409': {$ref: '#/components/responses/Error'}
   /jobs/{jobId}:
     parameters: [{$ref: '#/components/parameters/JobId'}]
@@ -310,6 +357,7 @@ paths:
       operationId: getJob
       responses:
         '200': {$ref: '#/components/responses/Job'}
+        '400': {$ref: '#/components/responses/Error'}
         '404': {$ref: '#/components/responses/Error'}
   /jobs/{jobId}/items:
     parameters: [{$ref: '#/components/parameters/JobId'}]
@@ -328,12 +376,16 @@ paths:
                       items:
                         type: array
                         items: {$ref: '#/components/schemas/JobItem'}
+        '400': {$ref: '#/components/responses/Error'}
+        '404': {$ref: '#/components/responses/Error'}
   /jobs/{jobId}/retry:
     parameters: [{$ref: '#/components/parameters/JobId'}]
     post:
       operationId: retryJob
       responses:
         '202': {$ref: '#/components/responses/Job'}
+        '400': {$ref: '#/components/responses/Error'}
+        '404': {$ref: '#/components/responses/Error'}
         '409': {$ref: '#/components/responses/Error'}
 components:
   securitySchemes:
@@ -394,15 +446,15 @@ components:
         year: {type: integer, minimum: 1000, maximum: 9999}
         title: {type: string, minLength: 1, maxLength: 2000}
         authors: {type: string, minLength: 1, maxLength: 2000, description: 有序作者名单，使用英文分号分隔}
-        doi: {type: [string, 'null']}
-        url: {type: [string, 'null']}
-        provider: {type: [string, 'null']}
+        doi: {type: [string, 'null'], description: 规范化后最多 500 个字符}
+        url: {type: [string, 'null'], description: 规范化后最多 2000 个字符的 HTTP 或 HTTPS 地址}
+        provider: {type: [string, 'null'], description: 规范化后最多 255 个字符}
     PaperStatus:
       type: string
       enum: [UNPROCESSED, READY, PUBLISHED, FAILED, UNSUPPORTED]
     Paper:
       type: object
-      required: [paperId, sourceId, year, title, authors, version, revision, status, archived, legacy, hasOriginal]
+      required: [paperId, sourceId, sourceName, year, title, authors, doi, url, provider, originalName, originalType, originalSize, version, revision, status, archived, legacy, hasOriginal, matchedWorkId, latestParseId, publishedParseId, updatedAt]
       properties:
         sourceId: {type: [string, 'null']}
         year: {type: [integer, 'null']}
@@ -420,7 +472,7 @@ components:
         revision: {type: integer, format: int64}
         archived: {type: boolean}
         legacy: {type: boolean}
-        hasOriginal: {type: boolean}
+        hasOriginal: {type: boolean, description: 论文列表检查是否登记路径。详情和写操作响应检查文件是否可读。}
         matchedWorkId: {type: [string, 'null']}
         latestParseId: {type: [string, 'null'], format: uuid}
         publishedParseId: {type: [string, 'null'], format: uuid}
@@ -428,7 +480,7 @@ components:
         updatedAt: {type: [string, 'null'], format: date-time}
     Block:
       type: object
-      required: [sequence, type, page, hasAsset]
+      required: [sequence, type, text, page, hasAsset, attributes]
       properties:
         sequence: {type: integer}
         type: {type: string}
@@ -444,7 +496,7 @@ components:
       enum: [READY, QUEUED, RUNNING, SUCCEEDED, FAILED, PARTIAL]
     Job:
       type: object
-      required: [jobId, kind, state, total, ready, queued, running, succeeded, skipped, failed, createdAt]
+      required: [jobId, kind, state, total, ready, queued, running, succeeded, skipped, failed, username, retryOf, createdAt, finishedAt, confirmedAt, scope]
       properties:
         jobId: {type: string, format: uuid}
         kind: {$ref: '#/components/schemas/JobKind'}
@@ -461,9 +513,10 @@ components:
         createdAt: {type: string, format: date-time}
         finishedAt: {type: [string, 'null'], format: date-time}
         confirmedAt: {type: [string, 'null'], format: date-time}
-        scope: {type: object}
+        scope: {type: object, description: 来源范围、所选论文数量 selectedCount，或 ZIP 文件名 filename}
     JobItem:
       type: object
+      required: [sequence, target, paperId, state, message, result]
       properties:
         sequence: {type: integer}
         target: {type: string}

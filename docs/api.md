@@ -1,0 +1,170 @@
+# AI Economist 管理 API
+
+本文记录当前版本的管理端 HTTP API。路径均以 `/api` 开头，默认后端地址为 `http://127.0.0.1:8095`。请求和响应默认使用 JSON。上传使用 `multipart/form-data`，原始文件、图片和 CSV 使用各自的媒体类型。[OpenAPI 契约](openapi.yaml) · [本地启动](../README.md#本地启动) · [术语表](../GLOSSARY.md)
+
+## 会话和 CSRF
+
+| 方法和路径 | 请求 | 成功响应 |
+| --- | --- | --- |
+| `GET /api/csrf` | 可匿名调用 | `200`，`{headerName, token}` |
+| `POST /api/session` | JSON `username`、`password`，需要 CSRF | `200`，`{username}`，切换会话 ID |
+| `GET /api/session` | 发送会话 Cookie | `200`，`{username}` |
+| `DELETE /api/session` | 发送会话 Cookie 和 CSRF | `204`，结束当前会话 |
+| `POST /api/session/password` | JSON `currentPassword`、`newPassword`，需要会话和 CSRF | `204`，密码更新后结束当前会话 |
+
+先取 CSRF，再用同一 Cookie 容器登录。登录成功后继续保存响应更新的 `PAPERFLOW_SESSION`。除获取 CSRF 和登录外，下列 API 均需要管理员会话。每次发送 `POST`、`PUT`、`PATCH` 或 `DELETE` 前，可以按管理前端的方式刷新 CSRF，将返回的 `token` 放进 `headerName` 指定的请求头。注销或改密后，重新从获取 CSRF 开始。会话超时配置为 8 小时。新密码至少 12 个字符，UTF-8 编码最多 72 字节。
+
+以下 Bash 示例需要 `curl` 和 `jq`。在同一个 shell 中继续执行后续示例，复用会话和 `write_api`。
+
+```bash
+base=http://127.0.0.1:8095/api
+cookie=$(mktemp)
+trap 'rm -f "$cookie"' EXIT
+
+write_api() {
+  local csrf header token
+  csrf=$(curl --fail-with-body -sS -b "$cookie" -c "$cookie" "$base/csrf") || return
+  header=$(jq -er '.headerName' <<< "$csrf") || return
+  token=$(jq -er '.token' <<< "$csrf") || return
+  curl --fail-with-body -sS -b "$cookie" -c "$cookie" -H "$header: $token" "$@"
+}
+
+read -r -p '管理员用户名 ' username
+read -rs -p '密码 ' password
+printf '\n'
+jq -n --arg username "$username" --arg password "$password" '{username: $username, password: $password}' |
+  write_api -X POST -H 'Content-Type: application/json' --data-binary @- "$base/session"
+unset password
+curl --fail-with-body -sS -b "$cookie" "$base/session"
+```
+
+## 论文和原始文件
+
+| 方法和路径 | 请求 | 成功响应 |
+| --- | --- | --- |
+| `GET /api/papers` | 下表的论文筛选字段及 `page`、`size` | `200`，论文分页 |
+| `GET /api/papers/export` | 与列表相同的筛选字段 | `200`，全部命中行的 CSV 附件 |
+| `POST /api/papers` | multipart `file` 和书目字段，上传 PDF | `201`，论文对象 |
+| `GET /api/papers/{paperId}` | 论文 ID | `200`，论文对象 |
+| `PATCH /api/papers/{paperId}` | JSON 书目字段加 `version` | `200`，更新后的论文对象 |
+| `POST /api/papers/{paperId}/archive` | 查询参数 `version`，无请求体 | `200`，归档后的论文对象 |
+| `DELETE /api/papers/{paperId}/archive` | 查询参数 `version`，无请求体 | `200`，恢复后的论文对象 |
+| `GET /api/papers/{paperId}/file` | 论文 ID | `200`，PDF 在线预览，其他类型使用 `application/octet-stream` 下载 |
+| `PUT /api/papers/{paperId}/file` | 查询参数 `version`，multipart `file`，上传 PDF | `200`，替换后的论文对象 |
+
+分页结构为 `{items, page, size, total}`。`page` 从 `0` 开始，默认 `0`。`size` 默认为 `20`，范围为 `1` 至 `100`。`total` 为筛选后总条数。论文按 `updatedAt` 倒序排列，无更新时间的论文排在末尾，同时间按 `paperId` 升序排列。
+
+| 列表和导出参数 | 含义 |
+| --- | --- |
+| `q` | 去掉首尾空白后最多 200 个字符，忽略大小写，在标题、论文 ID、作者或 DOI 中查找子串 |
+| `sourceId` | OpenAlex 出版来源 ID，按规范化后的 ID 精确筛选 |
+| `yearFrom`、`yearTo` | 可分别省略，范围为 `1000` 至 `9999`，包含边界，起始年须小于或等于结束年 |
+| `status` | `UNPROCESSED` 待处理、`READY` 有可导入的解析产物、`PUBLISHED` 有已发布全文、`FAILED` 解析或全文导入失败、`UNSUPPORTED` 当前格式暂不支持解析 |
+| `archived` | 默认 `false`，只返回未归档论文。`true` 只返回已归档论文 |
+
+导出文件名为 `paperflow-papers.csv`，使用带 BOM 的 UTF-8，列为 `paper_id,source_id,year,paper_title,authors,doi,status`。可能被电子表格解释为公式的文本值会带前导单引号。
+
+上传及编辑必填 `sourceId`、`year`、`title`、`authors`。`sourceId` 规范化为大写，格式为 `S` 加 1 至 24 位数字，并须能在配置的 OpenAlex 快照中找到。年份为四位数字。标题和作者规范化后各最多 2,000 个字符，作者按顺序使用英文分号分隔。可选字段为 `doi`、`url`、`provider`。DOI 规范化为小写并移除常见 DOI 前缀，最长 500 个字符。`url` 最长 2,000 个字符，须为带主机名的 HTTP 或 HTTPS 地址。`provider` 最长 255 个字符。单个原始文件上限为 100 MiB。新论文 ID 由出版来源、年份、标题及有序作者确定，历史论文沿用原有 ID。
+
+`PATCH` 要求重新提交四个必填书目字段。可选书目字段省略、设为 `null` 或置空会清除原值。编辑、归档、恢复、替换原件及确认匹配使用最新论文响应的 `version`。`revision` 表示原件修订，替换原件后递增，当前论文需要重新解析和导入全文。历史论文的初始版本可能为 `0`。收到 `PAPER_CHANGED` 后，重新读取论文再决定如何提交。
+
+论文对象字段如下。历史记录的书目及文件字段可能为 `null`。
+
+| 字段 | 含义 |
+| --- | --- |
+| `paperId` | 稳定的论文 ID，路径中应进行 URL 编码 |
+| `sourceId`、`sourceName`、`year`、`title`、`authors`、`doi`、`url`、`provider` | 书目信息 |
+| `originalName`、`originalType`、`originalSize` | 原件文件名、格式和字节数。常见格式为 `PDF`、`XML`、`HTML` |
+| `hasOriginal` | 列表检查是否登记路径。详情和写操作响应检查实际文件是否可读 |
+| `version`、`revision` | 记录并发版本、原件修订 |
+| `archived`、`legacy` | 是否归档、是否为接续的历史论文 |
+| `matchedWorkId` | 已关联的 OpenAlex 作品 ID，可为 `null` |
+| `latestParseId`、`publishedParseId` | 最新解析产物和当前已发布解析产物的 UUID，可为 `null`。历史全文可以在 `publishedParseId` 为空时继续查阅 |
+| `status`、`updatedAt` | 处理状态和带时区的更新时间，更新时间可为 `null` |
+
+下例选择快照中的一个实际出版来源，并上传本地 PDF。
+
+```bash
+curl --fail-with-body -sS -b "$cookie" --get "$base/sources" --data-urlencode 'q=Nature'
+read -r -p '使用上一步返回的出版来源 ID ' source_id
+paper_id=$(write_api -F "sourceId=$source_id" -F 'year=2024' -F 'title=Example paper' \
+  -F 'authors=Alice;Bob' -F 'file=@paper.pdf;type=application/pdf' "$base/papers" | jq -er '.paperId')
+```
+
+## 已发布全文
+
+| 方法和路径 | 请求 | 成功响应 |
+| --- | --- | --- |
+| `GET /api/papers/{paperId}/blocks` | `page`、`size` | `200`，按 `sequence` 排序的内容块分页。暂无可读全文时 `items` 为空 |
+| `GET /api/papers/{paperId}/blocks/{sequence}/asset` | 内容块的 `sequence` | `200`，PNG、JPEG、GIF 或 WebP 图片 |
+
+内容块包含 `sequence`、`type`、`text`、`page`、`hasAsset`、`attributes`。`sequence` 是文档顺序编号，`page` 是内容所在的原始文档页码。`text` 可为 `null`，`attributes` 按块类型携带结构化属性。`hasAsset=true` 表示已登记资源，图片请求仍可能因文件缺失返回 `404`。
+
+发起 `PARSE` 生成解析产物，任务完成后发起 `PUBLISH` 导入解析内容。两步都使用 `POST /api/jobs`，正文分别可用 `{"kind":"PARSE","paperIds":["论文 ID"]}` 和 `{"kind":"PUBLISH","paperIds":["论文 ID"]}`。每步查询任务详情及逐项结果。全文发布成功后读取内容块。同一原件重新解析期间，已发布全文可继续查阅。替换原件后，需要为当前原件完成这两个步骤才能发布对应的全文。
+
+## ZIP 批量导入
+
+| 方法和路径 | 请求 | 成功响应 |
+| --- | --- | --- |
+| `POST /api/imports` | multipart `file`，上传 ZIP | `201`，`kind=ORIGINAL_IMPORT` 的预检任务摘要 |
+| `POST /api/imports/{jobId}/confirm` | 预检返回的任务 UUID，无请求体 | `202`，同一任务摘要，将通过预检的项加入队列 |
+
+ZIP 内须有一个 UTF-8 CSV，支持 BOM。必填列为 `source_id,year,paper_title,authors,file_path`，可选列为 `doi,url,provider`。`file_path` 是相对 ZIP 根目录的路径，引用包内 PDF、XML 或 HTML 原件，HTML 接受 `.html` 和 `.htm`。ZIP 上限 256 MiB，整包声明的解压体积上限 3 GiB，最多 10,000 个条目。CSV 上限 8 MiB，最多 3,000 条数据记录，单个原件上限 100 MiB。
+
+```csv
+source_id,year,paper_title,authors,file_path
+S123,2024,Example paper,Alice;Bob,files/paper.pdf
+```
+
+用实际的出版来源 ID 替换示例中的 `S123`。上传后先查看 `GET /api/jobs/{jobId}/items`。`READY` 可确认导入，`SKIPPED` 表示重复，`FAILED` 的 `message` 给出问题。若无 `READY` 项，确认返回 `409`。确认后查询同一任务 UUID，重复确认会返回同一任务的当前摘要。预检失败的行需要修正后重新上传，执行阶段失败的行可在任务结束后重试。
+
+## 任务查询和处理
+
+| 方法和路径 | 请求 | 成功响应 |
+| --- | --- | --- |
+| `POST /api/jobs` | JSON `kind` 和处理范围 | `202`，新任务摘要 |
+| `GET /api/jobs` | 可选 `kind`、`state`、`page`、`size` | `200`，按创建时间倒序的任务分页 |
+| `GET /api/jobs/{jobId}` | 任务 UUID | `200`，任务摘要 |
+| `GET /api/jobs/{jobId}/items` | 任务 UUID，可选 `page`、`size` | `200`，按 `sequence` 排序的任务项分页 |
+| `POST /api/jobs/{jobId}/retry` | 已结束且存在可重试失败项的任务 UUID，无请求体 | `202`，只包含可重试失败项的新任务摘要 |
+
+| `kind` | 提交时的范围与用途 |
+| --- | --- |
+| `PARSE` | `paperIds` 或 `sourceId`，解析当前 PDF 原件 |
+| `PUBLISH` | `paperIds` 或 `sourceId`，按提交时选定的解析产物导入全文 |
+| `MATCH` | `paperIds` 或 `sourceId`，匹配 OpenAlex 作品 |
+| `METADATA` | `sourceId`，从配置的 OpenAlex 快照导入该来源的作品元数据 |
+| `ORIGINAL_IMPORT` | 由 `POST /api/imports` 创建，可在任务列表按此类型筛选 |
+
+`paperIds` 和 `sourceId` 二选一。`paperIds` 至少包含一个论文 ID，每个 ID 最长 255 个字符，服务端对重复 ID 去重。通过 `sourceId` 提交时，可加 `yearFrom`、`yearTo`，规则与论文筛选相同。每个论文处理任务最多接收 10,000 篇论文，提交时固定目标集合。归档论文、已有匹配或不符合当前处理阶段的输入可被跳过，具体见逐项 `message`。
+
+任务摘要返回 `jobId`、`kind`、`state`、`username`、`retryOf`、`createdAt`、`finishedAt`、`confirmedAt`、`scope`，以及 `total`、`ready`、`queued`、`running`、`succeeded`、`skipped`、`failed` 计数。`retryOf`、`finishedAt`、`confirmedAt` 可为 `null`。`scope` 包含来源范围、`selectedCount` 或 ZIP 的 `filename`。重试响应的 `retryOf` 指向原任务，后续使用新 `jobId` 查询结果。
+
+任务摘要状态为 `READY`、`QUEUED`、`RUNNING`、`SUCCEEDED`、`FAILED`、`PARTIAL`。`READY` 表示有项目等待确认。`queued + running` 大于零时可继续轮询。终态中，有成功项和失败项时为 `PARTIAL`，有失败项且无成功项时为 `FAILED`，无失败项时为 `SUCCEEDED`，包括全部跳过的情况。
+
+任务项返回 `sequence`、`target`、`paperId`、`state`、`message`、`result`。项状态为 `READY`、`QUEUED`、`RUNNING`、`SUCCEEDED`、`SKIPPED`、`FAILED`。`paperId`、`message`、`result` 可为 `null`。`result` 随类型变化，例如导入原件的 `{paperId}`、OpenAlex 元数据导入的 `{imported}`、匹配的 `{message, candidates, matched}`，以及解析执行时登记的 `{taskId, fileId, uploaded}`。当 `succeeded`、`skipped` 或 `failed` 非零时，可在任务项中进一步判断每个目标的结果。
+
+## OpenAlex 出版来源和匹配
+
+| 方法和路径 | 请求 | 成功响应 |
+| --- | --- | --- |
+| `GET /api/sources` | 可选 `q`，去掉首尾空白后最多 200 个字符 | `200`，至多 25 个 `{sourceId, name}` |
+| `POST /api/papers/{paperId}/match` | JSON `workId`、`version` | `200`，更新后的论文对象 |
+
+来源搜索按 ID 精确匹配或按名称查找子串，忽略大小写。指定实际来源后提交 `METADATA` 可扩充该来源下的本地作品数据。`MATCH` 在同一来源内先查 DOI，无 DOI 候选时再按年份、规范化标题和作者集合查找。同一作品的候选对象包含 `workId`、`year`、`title`、`doi`、`authors`。
+
+唯一候选可自动关联，多候选项会以 `SKIPPED` 返回，`result.candidates` 列出可选作品，`result.matched` 为 `false`。手动确认前重新读取论文取得当前 `version`，再用候选的 `workId` 提交确认。服务端按当前论文复核候选。成功后可从论文的 `matchedWorkId` 核对结果。
+
+## 错误处理
+
+应用错误返回 `{code, message}`。用 HTTP 状态和 `code` 决定恢复方式，`message` 可展示给管理员。异步工作返回 `202` 后，其执行错误通过任务项的 `state` 和 `message` 读取。
+
+| HTTP 状态 | 常见 `code` | 含义 |
+| --- | --- | --- |
+| `400` | `INVALID_INPUT` | 字段、分页、文件格式或范围无效，也涵盖应用层单文件 100 MiB 上限 |
+| `401` | `AUTH_REQUIRED`、`INVALID_LOGIN` | 需要管理员会话，或登录凭据有误 |
+| `403` | `ACCESS_DENIED` | 请求校验失败。写请求可检查 Cookie 和 CSRF |
+| `404` | `PAPER_NOT_FOUND`、`JOB_NOT_FOUND`、`FILE_MISSING` | 论文、任务或文件不可读取 |
+| `409` | `PAPER_CHANGED`、`PAPER_ARCHIVED`、`DUPLICATE_PAPER`、`JOB_CONFLICT`、`CANDIDATE_MISSING`、`WORK_ALREADY_BOUND`、`CONCURRENT_CHANGE` | 版本冲突、业务状态冲突或并发更新 |
+| `413` | `FILE_TOO_LARGE` | 超过 multipart 请求配置上限，单上传文件 256 MiB，请求体 257 MiB |
+| `500` | `INTERNAL` | 服务暂时无法完成操作 |
