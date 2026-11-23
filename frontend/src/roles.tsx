@@ -139,7 +139,10 @@ function RoleEditor({ role, groups, reload }: { role?: RoleDetail; groups: Permi
                 else next.delete(code)
                 setPermissions(next)
               }} /> {label}</label>
-            {requires.length > 0 && <small id={"requires-" + code}>依赖：{requires.map((required) => labels.get(required)).join("、")}</small>}
+            {requires.length > 0 && <small id={"requires-" + code}>
+              依赖：{requires.map((required) => labels.get(required)).join("、")}
+              {code === "PAPER_WRITE" && <><br /><span>ZIP 批量导入还需要「{labels.get("JOB_READ")}」。</span></>}
+            </small>}
           </div>)}</div>
       </div>)}
     </section>

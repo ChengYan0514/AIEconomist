@@ -1,6 +1,6 @@
 const assert = require("node:assert/strict")
 const { test } = require("node:test")
-const { login, withBrowser } = require("./browser.cjs")
+const { login, upload, withBrowser } = require("./browser.cjs")
 
 test("系统管理员分配自定义角色，权限变更收回已有会话的导出访问", () => withBrowser(async (browser, url) => {
   const admin = await browser.newPage()
@@ -24,6 +24,8 @@ test("系统管理员分配自定义角色，权限变更收回已有会话的�
   assert.equal(await admin.getByRole("button", { name: "保存角色" }).isDisabled(), true)
   await content.uncheck()
   await read.check()
+  await admin.getByRole("checkbox", { name: "维护论文", exact: true }).check()
+  await admin.getByText("ZIP 批量导入还需要「查阅任务」。", { exact: true }).waitFor()
   assert.equal(await admin.getByRole("checkbox", { name: "系统管理" }).count(), 0)
   await admin.getByRole("button", { name: "保存角色" }).click()
   await admin.getByRole("heading", { name: "浏览器论文导出" }).waitFor()
@@ -42,7 +44,7 @@ test("系统管理员分配自定义角色，权限变更收回已有会话的�
   await admin.goto(roleUrl)
   await admin.getByRole("row", { name: /自定义角色成员.*browser.role.*启用/ }).waitFor()
 
-  const member = await browser.newPage()
+  const member = await browser.newPage({ baseURL: url })
   member.setDefaultTimeout(8000)
   await member.goto(url + "/papers")
   await loginMember(member, temporary)
@@ -69,6 +71,7 @@ test("系统管理员分配自定义角色，权限变更收回已有会话的�
   await member.reload()
   await member.getByRole("heading", { name: "论文库" }).waitFor()
   assert.equal(await member.getByRole("link", { name: "导出 CSV" }).count(), 0)
+  await maintainOriginal(member)
   await member.goto(url + "/roles")
   await member.getByRole("heading", { name: "无权访问此页面" }).waitFor()
 
@@ -99,6 +102,30 @@ test("系统管理员分配自定义角色，权限变更收回已有会话的�
   await admin.getByRole("row", { name: /只读用户.*内置/ }).waitFor()
   assert.equal(await admin.getByRole("link", { name: "浏览器论文导出" }).count(), 0)
 }))
+
+async function maintainOriginal(page) {
+  assert.equal(await page.getByRole("button", { name: "批量导入", exact: true }).count(), 0)
+  const id = await upload(page, "Browser role limited content", "2099")
+  await page.goto("/papers/" + id)
+  await page.getByRole("heading", { name: "Browser role limited content" }).waitFor()
+  assert.equal(await page.getByRole("button", { name: "原始文件", exact: true }).count(), 0)
+  assert.equal(await page.getByRole("button", { name: "全文阅读", exact: true }).count(), 0)
+  assert.equal((await page.request.get("/api/papers/" + id + "/file")).status(), 403)
+  await page.getByRole("button", { name: "更换原件", exact: true }).click()
+  const dialog = page.getByRole("dialog", { name: "更换原件" })
+  await dialog.getByLabel("选择新的 PDF").setInputFiles({
+    name: "replacement.pdf",
+    mimeType: "application/pdf",
+    buffer: Buffer.from("%PDF-1.4\n1 0 obj\n<<>>\nendobj\n%%EOF\n"),
+  })
+  const completed = page.waitForResponse((response) => response.request().method() === "PUT" &&
+    new URL(response.url()).pathname === "/api/papers/" + id + "/file")
+  await dialog.getByRole("button", { name: "保存新原件" }).click()
+  const response = await completed
+  assert.equal(response.status(), 200)
+  assert.equal((await response.json()).revision, 2)
+  await dialog.waitFor({ state: "hidden" })
+}
 
 async function loginMember(page, password) {
   await page.getByLabel("用户名").fill("browser.role")

@@ -55,6 +55,7 @@ export function PaperDetail({ id }: { id: string }) {
       back={<a href="/papers" className="back-link"><ArrowLeft size={15} />返回论文库</a>}
       actions={<>
         {canWrite && !paper.archived && <Button type="button" variant="outline" onClick={() => setDialog("edit")}><Pencil size={16} />编辑书目</Button>}
+        {canWrite && !paper.archived && !canReadContent && <Button type="button" variant="outline" onClick={() => setDialog("replace")}><UploadCloud size={16} />更换原件</Button>}
         {canWrite && <Button type="button" variant="outline" onClick={() => setDialog("archive")}>{paper.archived ? <RotateCcw size={16} /> : <Archive size={16} />}{paper.archived ? "恢复论文" : "归档"}</Button>}
       </>} />
     {error && dialog !== "archive" && <Notice error>{error}</Notice>}
