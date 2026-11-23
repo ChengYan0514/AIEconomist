@@ -11,7 +11,7 @@ import java.util.Map;
 import java.util.UUID;
 
 public final class JobService {
-    private static final int MAX_TARGETS = 10000;
+    public static final int MAX_TARGETS = 10000;
     private final JobStore jobs;
     private final PaperService papers;
     private final JobJson json;

@@ -31,7 +31,7 @@ export async function api<T>(path: string, init: RequestInit = {}): Promise<T> {
   return response.status === 204 ? undefined as T : response.json()
 }
 
-export function useQuery<T>(path: string | null) {
+export function useQuery<T>(path: string | null, timeoutMs?: number) {
   const [data, setData] = useState<T>()
   const [error, setError] = useState<Error>()
   const [loading, setLoading] = useState(Boolean(path))
@@ -43,7 +43,8 @@ export function useQuery<T>(path: string | null) {
     let active = true
     setLoading(true)
     setError(undefined)
-    api<T>(path).then((result) => {
+    const signal = timeoutMs === undefined ? undefined : AbortSignal.timeout(timeoutMs)
+    api<T>(path, { signal }).then((result) => {
       if (active) setData(result)
     }).catch((reason: Error) => {
       if (active) setError(reason)
@@ -51,7 +52,7 @@ export function useQuery<T>(path: string | null) {
       if (active) setLoading(false)
     })
     return () => { active = false }
-  }, [path, count])
+  }, [path, count, timeoutMs])
 
   return { data, error, loading, reload }
 }

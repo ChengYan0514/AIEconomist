@@ -137,6 +137,13 @@ input[type="checkbox"] { accent-color: var(--accent); width: 15px; height: 15px;
 .data-table { border-collapse: collapse; width: 100%; text-align: left; font-size: .875rem; }
 .paper-table { min-width: 690px; }
 .job-table { min-width: 688px; }
+.system-status-table { min-width: 570px; }
+.system-status-table tbody th { background: transparent; }
+.system-status-table tbody tr:last-child th { border-bottom: 0; }
+.system-status-configuration { display: grid; grid-template-columns: minmax(8.5rem, 28%) minmax(0, 1fr); overflow: hidden; font-size: .875rem; }
+.system-status-configuration > * { margin: 0; padding: 12px 17px; border-bottom: 1px solid var(--line); overflow-wrap: anywhere; }
+.system-status-configuration dt { background: #f2f5f5; font-weight: 650; }
+.system-status-configuration > :nth-last-child(-n+2) { border-bottom: 0; }
 .data-table th {
   padding: 11px 12px; background: #f2f5f5; color: var(--ink); font-weight: 650; white-space: nowrap;
   border-bottom: 1px solid var(--line);

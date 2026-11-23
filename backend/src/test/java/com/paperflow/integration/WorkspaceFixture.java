@@ -17,8 +17,11 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.sql.Connection;
 import java.sql.DriverManager;
-import java.util.UUID;
 import java.util.List;
+import java.util.UUID;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipOutputStream;
@@ -29,11 +32,13 @@ final class WorkspaceFixture implements AutoCloseable {
     private final String user = System.getenv().getOrDefault("PAPERFLOW_TEST_DB_USER", "paperflow");
     private final String password = System.getenv().getOrDefault("PAPERFLOW_TEST_DB_PASSWORD", "");
     private final String schema = "pf_test_" + UUID.randomUUID().toString().replace("-", "").substring(0, 12);
+    private final ExecutorService mineruRequests = Executors.newCachedThreadPool();
     private final HttpServer mineru;
     private final Path directory;
     private final AtomicInteger task = new AtomicInteger();
     private final AtomicInteger uploads = new AtomicInteger();
     private final AtomicInteger reads = new AtomicInteger();
+    private volatile long healthDelayMillis;
 
     WorkspaceFixture() {
         try {
@@ -42,6 +47,7 @@ final class WorkspaceFixture implements AutoCloseable {
             Files.createDirectories(legacy().resolve("original"));
             Files.writeString(legacy().resolve("original/legacy.pdf"), PDF);
             mineru = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
+            mineru.setExecutor(mineruRequests);
             mineru.createContext("/v1/", this::mineruResponse);
             mineru.start();
         } catch (Exception error) {
@@ -112,11 +118,19 @@ final class WorkspaceFixture implements AutoCloseable {
 
     int mineruSubmissions() { return task.get(); }
     int mineruUploads() { return uploads.get(); }
+    void delayMineruHealth(long millis) { healthDelayMillis = millis; }
 
     private void mineruResponse(HttpExchange exchange) throws IOException {
         try (exchange) {
             String path = exchange.getRequestURI().getPath();
-            if (path.equals("/v1/tasks") && exchange.getRequestMethod().equals("POST")) {
+            if (path.equals("/v1/health") && exchange.getRequestMethod().equals("GET")) {
+                try {
+                    TimeUnit.MILLISECONDS.sleep(healthDelayMillis);
+                    respond(exchange, "{\"status\":\"ok\"}".getBytes(StandardCharsets.UTF_8));
+                } catch (InterruptedException interrupted) {
+                    Thread.currentThread().interrupt();
+                }
+            } else if (path.equals("/v1/tasks") && exchange.getRequestMethod().equals("POST")) {
                 createTask(exchange);
             } else if (path.contains("/uploads/") && exchange.getRequestMethod().equals("PUT")) {
                 acceptUpload(exchange);
@@ -182,5 +196,6 @@ final class WorkspaceFixture implements AutoCloseable {
     @Override
     public void close() {
         mineru.stop(0);
+        mineruRequests.shutdownNow();
     }
 }

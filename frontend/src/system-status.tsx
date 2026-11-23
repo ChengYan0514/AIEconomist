@@ -1,0 +1,90 @@
+import { useQuery } from "./api"
+import { Notice } from "./components/shared"
+import { Button } from "./components/ui/button"
+import { SectionHeader } from "./components/workspace"
+
+const dependencies = [
+  ["POSTGRESQL", "PostgreSQL"],
+  ["MINERU", "MinerU"],
+  ["CURRENT_STORAGE", "新版文件存储"],
+  ["LEGACY_STORAGE", "旧版文件存储"],
+  ["OPENALEX_SNAPSHOT", "OpenAlex 快照"],
+] as const
+
+const states = {
+  HEALTHY: ["正常", "green"],
+  UNAVAILABLE: ["不可用", "red"],
+  NOT_CHECKED: ["未检查", "neutral"],
+}
+
+type SystemReport = {
+  checks: {
+    dependency: typeof dependencies[number][0]
+    state: keyof typeof states
+    checkedAt: string | null
+    message: string
+  }[]
+  configuration: {
+    version: string
+    maxOriginalBytes: number
+    maxZipBytes: number
+    maxJobTargets: number
+  }
+}
+
+const checkTime = new Intl.DateTimeFormat("zh-CN", { dateStyle: "medium", timeStyle: "medium", hour12: false })
+
+export function SystemStatus() {
+  const { data, error, loading, reload } = useQuery<SystemReport>("/system-status", 8000)
+  const results = new Map(data?.checks.map((check) => [check.dependency, check]))
+  const lastCheckedAt = data?.checks.reduce<string | null>((latest, { checkedAt }) =>
+    checkedAt && (!latest || Date.parse(checkedAt) > Date.parse(latest)) ? checkedAt : latest, null)
+  const configuration = data?.configuration
+
+  return <>
+    <SectionHeader title="系统状态" />
+    <div className="mb-3 flex flex-wrap items-center gap-4">
+      <Button type="button" onClick={reload} disabled={loading}>{loading ? "正在检查…" : "重新检查"}</Button>
+      <span className="muted text-sm" aria-live="polite">
+        {lastCheckedAt ? <>上次检查 <CheckedTime value={lastCheckedAt} /></> : "尚未取得检查结果"}
+      </span>
+    </div>
+    {error && <Notice error>{data ? "刷新失败，当前显示上次检查结果。" : "检查失败，请稍后重试。"}</Notice>}
+    <div className="panel" aria-busy={loading}>
+      <div className="table-scroll" role="region" aria-label="依赖状态" tabIndex={0}>
+        <table className="data-table system-status-table" aria-label="依赖检查结果">
+          <thead><tr><th scope="col">依赖</th><th scope="col">状态</th><th scope="col">检查结果</th><th scope="col">检查时间</th></tr></thead>
+          <tbody>{dependencies.map(([dependency, name]) => {
+            const result = results.get(dependency)
+            const [label, color] = states[result?.state ?? "NOT_CHECKED"]
+            return <tr key={dependency}>
+              <th scope="row">{name}</th>
+              <td><span className={"status-chip status-" + color}><span className="status-dot" aria-hidden="true" />{label}</span></td>
+              <td>{result?.message ?? "—"}</td>
+              <td className="table-date">{result?.checkedAt ? <CheckedTime value={result.checkedAt} /> : "—"}</td>
+            </tr>
+          })}</tbody>
+        </table>
+      </div>
+    </div>
+    <section className="mt-8" aria-labelledby="effective-configuration">
+      <h2 id="effective-configuration" className="mb-3 text-xl font-semibold">有效配置</h2>
+      <dl className="panel system-status-configuration">
+        <dt>应用版本</dt><dd>{configuration?.version ?? "—"}</dd>
+        <dt>单文件上限</dt><dd>{byteLimit(configuration?.maxOriginalBytes)}</dd>
+        <dt>ZIP 上限</dt><dd>{byteLimit(configuration?.maxZipBytes)}</dd>
+        <dt>每任务论文上限</dt><dd>{configuration ? configuration.maxJobTargets.toLocaleString("zh-CN") + " 篇" : "—"}</dd>
+      </dl>
+    </section>
+  </>
+}
+
+function CheckedTime({ value }: { value: string }) {
+  return <time dateTime={value} title={value}>{checkTime.format(new Date(value))}</time>
+}
+
+function byteLimit(bytes?: number) {
+  if (bytes === undefined) return "—"
+  const mebibytes = bytes / (1024 * 1024)
+  return Number.isInteger(mebibytes) ? mebibytes.toLocaleString("zh-CN") + " MiB" : bytes.toLocaleString("zh-CN") + " 字节"
+}

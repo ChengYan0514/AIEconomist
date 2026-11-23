@@ -10,6 +10,7 @@ import { OpenAlex } from "./openalex"
 import { Library } from "./papers/library"
 import { PaperDetail } from "./papers/detail"
 import { Permissions, type Session } from "./permissions"
+import { SystemStatus } from "./system-status"
 import { Users } from "./users"
 import "./styles.css"
 
@@ -42,7 +43,7 @@ function App() {
   const required = section === "papers" ? "PAPER_READ" :
     section === "jobs" ? "JOB_READ" :
     section === "openalex" ? "OPENALEX_MANAGE" :
-    section === "users" || section === "audit" ? "SYSTEM_MANAGE" : undefined
+    section === "system-status" || section === "users" || section === "audit" ? "SYSTEM_MANAGE" : undefined
   const blocked = (required && !permissions.includes(required)) ||
     (section === "openalex" && !permissions.includes("JOB_READ"))
   const page = blocked ? <section className="empty-state">
@@ -51,6 +52,7 @@ function App() {
     section === "papers" ? id ? <PaperDetail id={decodeURIComponent(id)} /> : <Library /> :
     section === "jobs" ? id ? <JobDetail id={decodeURIComponent(id)} /> : <Jobs /> :
     section === "openalex" ? <OpenAlex /> :
+    section === "system-status" && !id ? <SystemStatus /> :
     section === "users" && !id ? <Users onChange={refresh} /> :
     section === "audit" && !id ? <AuditLog /> : <Empty title="找不到此页面"><a href="/papers" className="inline-link">返回论文库</a></Empty>
   return <Permissions.Provider value={permissions}>

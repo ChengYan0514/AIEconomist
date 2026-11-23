@@ -219,6 +219,19 @@ paths:
         '400': {$ref: '#/components/responses/Error'}
         '401': {$ref: '#/components/responses/Error'}
         '403': {$ref: '#/components/responses/Error'}
+  /system-status:
+    get:
+      operationId: checkSystemStatus
+      description: 仅系统管理员可用。每次请求独立检查五项依赖。某项不可用时仍返回其余结果。响应禁止缓存。
+      responses:
+        '200':
+          description: 依赖检查结果与允许展示的生效配置
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/SystemStatus'}
+        '401': {$ref: '#/components/responses/Error'}
+        '403': {$ref: '#/components/responses/Error'}
+        '500': {$ref: '#/components/responses/Error'}
   /audit-events:
     get:
       operationId: listAuditEvents
@@ -607,7 +620,7 @@ components:
         PAPER_READ 允许查阅论文书目、关联及出版来源。CONTENT_READ 允许读取原件、已发布全文及资源。
         PAPER_CSV_EXPORT 单独授权 CSV 下载。PAPER_WRITE 允许导入、编辑、替换、归档恢复及原件导入任务。
         JOB_READ 允许读任务。PDF_PARSE、FULL_TEXT_IMPORT 分别允许提交或重试相应任务。
-        OPENALEX_MANAGE 允许元数据导入、匹配和候选复核。SYSTEM_MANAGE 允许管理用户及读取审计日志。
+        OPENALEX_MANAGE 允许元数据导入、匹配和候选复核。SYSTEM_MANAGE 允许管理用户、检查系统状态及读取审计日志。
         系统管理员拥有全部权限。数据维护员拥有除 PAPER_CSV_EXPORT 和 SYSTEM_MANAGE 外的权限。
         只读用户拥有 PAPER_READ 和 CONTENT_READ。任务提交和重试基于任务类型校验执行及 JOB_READ 权限。
     Page:
@@ -618,6 +631,37 @@ components:
         page: {type: integer}
         size: {type: integer}
         total: {type: integer, format: int64}
+    SystemStatus:
+      type: object
+      additionalProperties: false
+      required: [checks, configuration]
+      properties:
+        checks:
+          type: array
+          minItems: 5
+          maxItems: 5
+          description: 每项依赖恰好返回一个结果。
+          items: {$ref: '#/components/schemas/DependencyCheck'}
+        configuration:
+          type: object
+          additionalProperties: false
+          required: [version, maxOriginalBytes, maxZipBytes, maxJobTargets]
+          properties:
+            version: {type: string, description: 当前应用的构建版本}
+            maxOriginalBytes: {type: integer, format: int64, minimum: 0}
+            maxZipBytes: {type: integer, format: int64, minimum: 0}
+            maxJobTargets: {type: integer, minimum: 1}
+    DependencyCheck:
+      type: object
+      additionalProperties: false
+      required: [dependency, state, checkedAt, message]
+      properties:
+        dependency:
+          type: string
+          enum: [POSTGRESQL, MINERU, CURRENT_STORAGE, LEGACY_STORAGE, OPENALEX_SNAPSHOT]
+        state: {type: string, enum: [HEALTHY, UNAVAILABLE, NOT_CHECKED]}
+        checkedAt: {type: [string, 'null'], format: date-time, description: 取得结果的时间。未检查时为空。}
+        message: {type: string, description: 固定的简短说明，不包含部署配置或底层异常文本。}
     AuditOutcome:
       type: string
       enum: [SUCCEEDED, FAILED, DENIED]

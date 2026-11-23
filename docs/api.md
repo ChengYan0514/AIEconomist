@@ -167,6 +167,12 @@ S123,2024,Example paper,Alice;Bob,files/paper.pdf
 
 这些接口需要系统管理员权限。搜索同时匹配用户名和显示名称，忽略大小写。角色为 `SYSTEM_ADMIN`、`DATA_MAINTAINER` 或 `READ_ONLY`。状态为 `ACTIVE` 或 `DISABLED`。临时密码在创建响应中展示一次。用户名在创建时规范化，之后保持固定。最后一个启用的系统管理员改为其他角色时返回 `409 LAST_SYSTEM_ADMIN`。
 
+## 系统状态
+
+仅系统管理员可请求 `GET /api/system-status`。每次请求重新检查 PostgreSQL 应用查询、MinerU 健康接口、新版文件存储的读写、旧版文件存储的读取，以及配置的 OpenAlex 快照必需表。每项检查最多等待 2 秒。单项故障仍返回 `200` 和其他检查结果。响应禁止缓存。
+
+`checks` 中的每项包含 `dependency`、`state`、`checkedAt` 和固定的简短 `message`。状态可为 `HEALTHY`、`UNAVAILABLE` 或 `NOT_CHECKED`。已检查的结果包含 ISO 8601 时间。有效配置 `configuration` 包含应用构建版本 `version`、有效的单个原件和 ZIP 上传上限 `maxOriginalBytes`、`maxZipBytes`（以字节计），以及任务论文目标上限 `maxJobTargets`。上传上限取表单请求、文件和业务限制的最小值。表单字段和边界也计入请求大小。
+
 ## 审计日志
 
 | 方法和路径 | 请求 | 成功响应 |
