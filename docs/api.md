@@ -111,7 +111,7 @@ paper_id=$(write_api -F "sourceId=$source_id" -F 'year=2024' -F 'title=Example p
 | `POST /api/imports` | multipart `file`，上传 ZIP | `201`，`kind=ORIGINAL_IMPORT` 的预检任务摘要 |
 | `POST /api/imports/{jobId}/confirm` | 预检返回的任务 UUID，无请求体 | `202`，同一任务摘要，将通过预检的项加入队列 |
 
-ZIP 内须有一个 UTF-8 CSV，支持 BOM。必填列为 `source_id,year,paper_title,authors,file_path`，可选列为 `doi,url,provider`。`file_path` 是相对 ZIP 根目录的路径，引用包内 PDF、XML 或 HTML 原件，HTML 接受 `.html` 和 `.htm`。ZIP 上限 256 MiB，整包声明的解压体积上限 3 GiB，最多 10,000 个条目。CSV 上限 8 MiB，最多 3,000 条数据记录，单个原件上限 100 MiB。
+ZIP 预检和确认需要 `PAPER_WRITE` 和 `JOB_READ`。ZIP 内须有一个 UTF-8 CSV，支持 BOM。必填列为 `source_id,year,paper_title,authors,file_path`，可选列为 `doi,url,provider`。`file_path` 是相对 ZIP 根目录的路径，引用包内 PDF、XML 或 HTML 原件，HTML 接受 `.html` 和 `.htm`。ZIP 上限 256 MiB，整包声明的解压体积上限 3 GiB，最多 10,000 个条目。CSV 上限 8 MiB，最多 3,000 条数据记录，单个原件上限 100 MiB。
 
 ```csv
 source_id,year,paper_title,authors,file_path
@@ -196,7 +196,7 @@ S123,2024,Example paper,Alice;Bob,files/paper.pdf
 
 ## 系统状态
 
-仅系统管理员可请求 `GET /api/system-status`。每次请求重新检查 PostgreSQL 应用查询、MinerU 健康接口、新版文件存储的读写、旧版文件存储的读取，以及配置的 OpenAlex 快照必需表。每项检查最多等待 2 秒。单项故障仍返回 `200` 和其他检查结果。响应禁止缓存。
+仅系统管理员可请求 `GET /api/system-status`。每次请求先通过数据库重新校验会话与权限，再检查 PostgreSQL 应用查询、MinerU 健康接口、新版文件存储的读写、旧版文件存储的读取，以及配置的 OpenAlex 快照必需表。每项检查最多等待 2 秒。进入检查后，单项故障仍返回 `200` 和其他检查结果。数据库不可用导致会话无法校验时，服务器返回 `500`，JSON 包含 `timestamp`、`status`、`error` 和 `path`。页面保留上次结果及检查时间，并提示刷新失败。响应禁止缓存。
 
 `checks` 中的每项包含 `dependency`、`state`、`checkedAt` 和固定的简短 `message`。状态可为 `HEALTHY`、`UNAVAILABLE` 或 `NOT_CHECKED`。已检查的结果包含 ISO 8601 时间。有效配置 `configuration` 包含应用构建版本 `version`、有效的单个原件和 ZIP 上传上限 `maxOriginalBytes`、`maxZipBytes`（以字节计），以及任务论文目标上限 `maxJobTargets`。上传上限取表单请求、文件和业务限制的最小值。表单字段和边界也计入请求大小。
 

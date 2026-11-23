@@ -350,7 +350,10 @@ paths:
   /system-status:
     get:
       operationId: checkSystemStatus
-      description: 仅系统管理员可用。每次请求独立检查五项依赖。某项不可用时仍返回其余结果。响应禁止缓存。
+      description: >-
+        仅系统管理员可用。每次请求先通过数据库重新校验会话与权限，再独立检查五项依赖。
+        进入检查后，某项不可用时仍返回其余结果。若数据库不可用导致会话无法校验，请求失败，
+        页面保留上次结果及检查时间，并提示刷新失败。响应禁止缓存。
       responses:
         '200':
           description: 依赖检查结果与允许展示的生效配置
@@ -359,7 +362,20 @@ paths:
               schema: {$ref: '#/components/schemas/SystemStatus'}
         '401': {$ref: '#/components/responses/Error'}
         '403': {$ref: '#/components/responses/Error'}
-        '500': {$ref: '#/components/responses/Error'}
+        '500':
+          description: 请求处理失败。会话校验阶段的故障由服务器返回错误信息。
+          content:
+            application/json:
+              schema:
+                oneOf:
+                  - $ref: '#/components/responses/Error/content/application~1json/schema'
+                  - type: object
+                    required: [timestamp, status, error, path]
+                    properties:
+                      timestamp: {type: string, format: date-time}
+                      status: {type: integer, const: 500}
+                      error: {type: string}
+                      path: {type: string}
   /audit-events:
     get:
       operationId: listAuditEvents
@@ -481,6 +497,7 @@ paths:
         '404': {$ref: '#/components/responses/Error'}
     put:
       operationId: replaceOriginal
+      description: 需要 PAPER_WRITE。原件读取由 CONTENT_READ 单独授权。
       parameters: [{$ref: '#/components/parameters/Version'}]
       requestBody:
         required: true
@@ -604,6 +621,7 @@ paths:
   /imports:
     post:
       operationId: preflightOriginals
+      description: 需要 PAPER_WRITE 和 JOB_READ。
       requestBody:
         required: true
         content:
@@ -615,15 +633,19 @@ paths:
       responses:
         '201': {$ref: '#/components/responses/Job'}
         '400': {$ref: '#/components/responses/Error'}
+        '401': {$ref: '#/components/responses/Error'}
+        '403': {$ref: '#/components/responses/Error'}
         '413': {$ref: '#/components/responses/Error'}
   /imports/{jobId}/confirm:
     parameters: [{$ref: '#/components/parameters/JobId'}]
     post:
       operationId: confirmOriginals
-      description: 将通过预检的任务项加入队列，执行时复核重复。重复确认返回同一任务的当前摘要。
+      description: 需要 PAPER_WRITE 和 JOB_READ。将通过预检的任务项加入队列，执行时复核重复。重复确认返回同一任务的当前摘要。
       responses:
         '202': {$ref: '#/components/responses/Job'}
         '400': {$ref: '#/components/responses/Error'}
+        '401': {$ref: '#/components/responses/Error'}
+        '403': {$ref: '#/components/responses/Error'}
         '404': {$ref: '#/components/responses/Error'}
         '409': {$ref: '#/components/responses/Error'}
   /jobs:
@@ -791,7 +813,7 @@ components:
       enum: [PAPER_READ, CONTENT_READ, PAPER_CSV_EXPORT, PAPER_WRITE, JOB_READ, PDF_PARSE, FULL_TEXT_IMPORT, OPENALEX_MANAGE]
       description: |
         CONTENT_READ 和 PAPER_WRITE 依赖 PAPER_READ。PDF_PARSE 和 FULL_TEXT_IMPORT 依赖 JOB_READ。
-        OPENALEX_MANAGE 依赖 PAPER_READ 及 JOB_READ。CSV 导出单独授权。
+        OPENALEX_MANAGE 依赖 PAPER_READ 及 JOB_READ。ZIP 批量导入需要 PAPER_WRITE 和 JOB_READ。CSV 导出单独授权。
     RoleSummary:
       type: object
       required: [id, name, description, builtIn, userCount]
@@ -860,7 +882,7 @@ components:
       enum: [PAPER_READ, CONTENT_READ, PAPER_CSV_EXPORT, PAPER_WRITE, JOB_READ, PDF_PARSE, FULL_TEXT_IMPORT, OPENALEX_MANAGE, SYSTEM_MANAGE]
       description: |
         PAPER_READ 允许查阅论文书目、关联及出版来源。CONTENT_READ 允许读取原件、已发布全文及资源。
-        PAPER_CSV_EXPORT 单独授权 CSV 下载。PAPER_WRITE 允许导入、编辑、替换、归档恢复及原件导入任务。
+        PAPER_CSV_EXPORT 单独授权 CSV 下载。PAPER_WRITE 允许单篇导入、编辑、替换、归档恢复。ZIP 批量导入还需要 JOB_READ。
         JOB_READ 允许读任务。PDF_PARSE、FULL_TEXT_IMPORT 分别允许提交或重试相应任务。
         OPENALEX_MANAGE 允许元数据导入、匹配和候选复核。SYSTEM_MANAGE 仅由内置系统管理员持有，用于管理用户和角色、查看系统状态及审计。
         系统管理员拥有全部权限。数据维护员拥有除 PAPER_CSV_EXPORT 和 SYSTEM_MANAGE 外的权限。
@@ -1027,6 +1049,7 @@ components:
           type: [object, 'null']
           description: 随任务类型变化。匹配任务保存执行时的候选书目和出版来源。
           properties:
+            paperId: {type: string, description: ZIP 导入登记或找到的实际论文 ID。}
             candidates:
               type: array
               items: {$ref: '#/components/schemas/MatchCandidate'}
@@ -1049,7 +1072,6 @@ components:
       properties:
         workId: {type: string}
         year: {type: [integer, 'null']}
-            paperId: {type: string, description: ZIP 导入登记或找到的实际论文 ID。}
         title: {type: [string, 'null']}
         doi: {type: [string, 'null']}
         authors: {type: string}
