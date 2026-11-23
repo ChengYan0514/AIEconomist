@@ -4,13 +4,12 @@ import type { JobKind } from "./types"
 export type Permission = "PAPER_READ" | "CONTENT_READ" | "PAPER_CSV_EXPORT" | "PAPER_WRITE"
   | "JOB_READ" | "PDF_PARSE" | "FULL_TEXT_IMPORT" | "OPENALEX_MANAGE" | "SYSTEM_MANAGE"
 
-export const roles = { SYSTEM_ADMIN: "系统管理员", DATA_MAINTAINER: "数据维护员", READ_ONLY: "只读用户" }
-export type Role = keyof typeof roles
+export const roles: Record<string, string> = { SYSTEM_ADMIN: "系统管理员", DATA_MAINTAINER: "数据维护员", READ_ONLY: "只读用户" }
 
 export type Session = {
   username: string
   displayName: string
-  role: Role
+  role: string
   mustChangePassword: boolean
   permissions: Permission[]
 }

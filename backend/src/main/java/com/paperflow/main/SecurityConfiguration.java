@@ -3,6 +3,8 @@ package com.paperflow.main;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.paperflow.account.AccountService;
 import com.paperflow.account.Accounts;
+import com.paperflow.account.RoleManagement;
+import com.paperflow.account.Roles;
 import com.paperflow.account.UserManagement;
 import com.paperflow.adapters.web.ApiErrors;
 import com.paperflow.adapters.web.SessionPrincipal;
@@ -92,7 +94,8 @@ class SecurityConfiguration {
             .AuthorizationManagerRequestMatcherRegistry rules, WorkspaceAccess access) {
         String[] auditPaths = {"/api/audit-events", "/api/audit-events/**"};
         String[] contentPaths = {"/api/papers/{paperId}/file", "/api/papers/{paperId}/blocks", "/api/papers/{paperId}/blocks/{sequence}/asset"};
-        String[] paperPaths = {"/api/papers", "/api/papers/{paperId}", "/api/sources"};
+        String[] paperPaths = {"/api/papers", "/api/papers/{paperId}"};
+        var sourceAccess = access.requireAny(PAPER_READ, PDF_PARSE, FULL_TEXT_IMPORT);
         var csvAccess = access.requireAction(PAPER_CSV_EXPORT, "PAPER_CSV_EXPORT", "PAPER_COLLECTION", "papers");
         rules.dispatcherTypeMatchers(DispatcherType.ASYNC).permitAll()
                 .requestMatchers(GET, "/api/csrf").permitAll()
@@ -109,7 +112,9 @@ class SecurityConfiguration {
                 .requestMatchers(PATCH, "/api/users/{username}").access(access.requireAction(SYSTEM_MANAGE, "USER_UPDATE", "USER", null))
                 .requestMatchers(PUT, "/api/users/{username}/status").access(access.requireAction(SYSTEM_MANAGE, "USER_STATUS_CHANGE", "USER", null))
                 .requestMatchers(POST, "/api/users/{username}/reset-password").access(access.requireAction(SYSTEM_MANAGE, "USER_PASSWORD_RESET", "USER", null))
-                .requestMatchers("/api/users", "/api/users/**").access(access.require(SYSTEM_MANAGE))
+                .requestMatchers("/api/users", "/api/users/**", "/api/roles", "/api/roles/**").access(access.require(SYSTEM_MANAGE))
+                .requestMatchers(GET, "/api/sources").access(sourceAccess)
+                .requestMatchers(HEAD, "/api/sources").access(sourceAccess)
                 .requestMatchers(GET, "/api/papers/export").access(csvAccess)
                 .requestMatchers(HEAD, "/api/papers/export").access(csvAccess)
                 .requestMatchers(GET, contentPaths).access(access.require(CONTENT_READ, PAPER_READ))
@@ -129,8 +134,13 @@ class SecurityConfiguration {
     }
 
     @Bean
-    UserManagement userManagement(Accounts accounts, PasswordEncoder passwords, AuditLog audit, TransactionTemplate transactions) {
-        return new UserManagement(accounts, passwords, audit, transactions);
+    UserManagement userManagement(Accounts accounts, Roles roles, PasswordEncoder passwords, AuditLog audit, TransactionTemplate transactions) {
+        return new UserManagement(accounts, roles, passwords, audit, transactions);
+    }
+
+    @Bean
+    RoleManagement roleManagement(Roles roles, Accounts accounts, AuditLog audit, TransactionTemplate transactions) {
+        return new RoleManagement(roles, accounts, audit, transactions);
     }
 
     @Bean

@@ -167,11 +167,25 @@ S123,2024,Example paper,Alice;Bob,files/paper.pdf
 | `PUT /api/users/{username}/status` | JSON `status` | `200`，当前用户 |
 | `POST /api/users/{username}/reset-password` | 无 | `200`，`{user, temporaryPassword}` |
 
-这些接口需要系统管理员权限。搜索同时匹配用户名和显示名称，忽略大小写。角色为 `SYSTEM_ADMIN`、`DATA_MAINTAINER` 或 `READ_ONLY`。状态为 `ACTIVE` 或 `DISABLED`。用户名在创建时规范化，之后保持固定。
+这些接口需要系统管理员权限。搜索同时匹配用户名和显示名称，忽略大小写。每个账号有一个已登记的角色，取值来自 `GET /api/roles`。状态为 `ACTIVE` 或 `DISABLED`。用户名在创建时规范化，之后保持固定。
 
 停用后旧会话返回 `401 AUTH_REQUIRED`，恢复后需要重新登录。停用保留该账号的任务记录，已提交的任务继续处理。将状态设置为当前值时直接返回当前用户。停用或降级最后一个启用的系统管理员会返回 `409 LAST_SYSTEM_ADMIN`。
 
 临时密码仅在成功创建或重置的响应中展示，并设置 `Cache-Control: no-store`。重置会撤销旧密码和会话。启用的用户需要用临时密码登录并设置个人密码，随后重新登录。停用期间依然可以生成临时密码，用户在账号恢复后登录。
+
+## 角色管理
+
+| 请求 | 参数 | 成功响应 |
+| --- | --- | --- |
+| `GET /api/roles` | 无 | `200`，角色列表 `items` 和分组业务权限 `permissionGroups` |
+| `GET /api/roles/{roleId}` | 角色 ID | `200`，角色及权限、成员 |
+| `POST /api/roles` | JSON `name`、`description`、`permissions` | `201`，自定义角色详情 |
+| `PUT /api/roles/{roleId}` | 同创建，另含编辑所依据的 `expectedUserCount` | `200`，更新后的角色详情 |
+| `DELETE /api/roles/{roleId}` | 角色 ID | `204`，未分配的自定义角色已删除 |
+
+这些接口需要系统管理员权限。内置角色 ID 和权限固定，自定义角色 ID 由服务端生成。自定义角色可包含业务权限，权限依赖由目录的 `requires` 字段提供且保存时校验。CSV 可独立授权。出版来源搜索也向有文件解析或解析内容导入权限的用户开放，以便按出版来源提交处理任务。
+
+人数及成员包含启用和停用用户。编辑期间分配人数变化时返回 `409 ROLE_ASSIGNMENTS_CHANGED`。将所有成员重新分配后方可删除，否则返回 `409 ROLE_IN_USE`。角色调配或权限变更后，已有会话的后续请求立即使用新权限。
 
 ## 审计日志
 
@@ -185,6 +199,8 @@ S123,2024,Example paper,Alice;Bob,files/paper.pdf
 论文 CSV 导出的动作是 `PAPER_CSV_EXPORT`，对象是 `PAPER_COLLECTION` 类型的 `papers`。服务器完成 CSV 写入与刷新后记录 `SUCCEEDED`，摘要包含导出行数、是否使用搜索词、归档视图以及已应用的来源 ID、年份范围和处理状态。请求字段无效或写入中断时记录 `FAILED`，摘要只包含错误代码。未登录的请求返回 `401`，已登录但未获准的导出请求返回 `403` 并记录 `DENIED`。审计摘要排除原始搜索词、正文、CSV 内容、密码、密钥和会话标识。
 
 用户创建、显示名称修改和角色变更分别记录为 `USER_CREATE`、`USER_DISPLAY_NAME_CHANGE` 和 `USER_ROLE_CHANGE`。停用、恢复和密码重置分别记录为 `USER_DISABLE`、`USER_ENABLE` 和 `USER_PASSWORD_RESET`。对象类型为 `USER`，对象 ID 为该用户的固定用户名。启停摘要记录前后状态，重置摘要只记录需要设置个人密码。
+
+自定义角色创建、修改和删除分别记录为 `ROLE_CREATE`、`ROLE_UPDATE` 和 `ROLE_DELETE`。对象类型为 `ROLE`，对象 ID 为固定角色 ID。摘要记录角色名称、权限和受影响人数，编辑事件同时记录此前的名称、权限以及说明是否变化。
 
 ## 错误处理
 

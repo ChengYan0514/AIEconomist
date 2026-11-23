@@ -188,6 +188,23 @@ input[type="checkbox"] { accent-color: var(--accent); width: 15px; height: 15px;
 .form-stack { display: grid; gap: 13px; }
 .form-stack label { min-width: 0; display: grid; gap: 6px; color: var(--ink); font-size: .875rem; font-weight: 650; }
 .form-stack input, .form-stack select { font-weight: 440; }
+.role-table { min-width: 430px; }
+.role-editor-fields { max-width: 520px; margin-bottom: 24px; }
+.role-editor-fields p { margin-top: -7px; font-size: .875rem; }
+.role-editor-fields textarea { width: 100%; resize: vertical; }
+.role-permission-group {
+  display: grid; grid-template-columns: minmax(120px, 190px) minmax(0, 1fr); gap: 12px;
+  padding: 18px 20px; border-bottom: 1px solid var(--line);
+}
+.role-permission-group:last-child { border-bottom: 0; }
+.role-permission-group h3 { font-weight: 650; }
+.role-permission-group ul, .role-permission-options { display: grid; gap: 10px; }
+.role-permission-options label { display: inline-flex; gap: 9px; align-items: center; cursor: pointer; }
+.role-permission-options small { display: block; margin: 3px 0 0 24px; color: var(--muted); }
+.role-editor > [role="alert"] { margin-block: 12px; }
+@media (max-width: 560px) {
+  .role-permission-group { grid-template-columns: minmax(0, 1fr); }
+}
 .field-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
 .modal-actions { display: flex; justify-content: flex-end; gap: 9px; padding-top: 6px; }
 .upload-field {

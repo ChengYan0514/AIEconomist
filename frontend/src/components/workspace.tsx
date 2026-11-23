@@ -1,4 +1,4 @@
-import { BookOpen, ChevronDown, ClipboardList, Database, FileText, LogOut, Menu, ShieldCheck, Upload, UserRound, UsersRound, X } from "lucide-react"
+import { BookOpen, ChevronDown, ClipboardList, Database, FileText, LogOut, Menu, Shield, ShieldCheck, Upload, UserRound, UsersRound, X } from "lucide-react"
 import { useState, type ReactNode } from "react"
 import { usePermissions, type Permission } from "../permissions"
 import { PasswordForm } from "./password"
@@ -22,6 +22,7 @@ const navigation: { label: string; items: { path: string; label: string; icon: t
   label: "系统管理",
   items: [
     { path: "/users", label: "用户管理", icon: UsersRound, permission: "SYSTEM_MANAGE" },
+    { path: "/roles", label: "角色管理", icon: Shield, permission: "SYSTEM_MANAGE" },
     { path: "/audit", label: "审计日志", icon: ClipboardList, permission: "SYSTEM_MANAGE" },
   ],
 }]

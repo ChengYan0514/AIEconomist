@@ -4,11 +4,11 @@ import { api, errorMessage, params, useQuery } from "./api"
 import { Empty, Loading, Modal, Notice, Pagination } from "./components/shared"
 import { Button } from "./components/ui/button"
 import { SectionHeader } from "./components/workspace"
-import { roles, type Role } from "./permissions"
+import type { RoleCatalog, RoleSummary } from "./roles"
 import type { Page } from "./types"
 
 type Status = "ACTIVE" | "DISABLED"
-type User = { username: string; displayName: string; role: Role; status: Status; createdAt: string }
+type User = { username: string; displayName: string; role: string; status: Status; createdAt: string }
 export type IssuedPassword = { user: User; temporaryPassword: string }
 type UserAction = { user: User; action: "status" | "reset" }
 const size = 20
@@ -20,6 +20,9 @@ export function Users({ onChange, onPasswordReset }: { onChange: () => void; onP
   const [editing, setEditing] = useState<User | "new" | null>(null)
   const [managing, setManaging] = useState<UserAction | null>(null)
   const result = useQuery<Page<User>>("/users" + params({ ...filters, page, size }))
+  const catalog = useQuery<RoleCatalog>("/roles")
+  const roles = catalog.data?.items ?? []
+  const roleNames = new Map(roles.map(({ id, name }) => [id, name]))
   const rows = result.data?.items ?? []
 
   function search(event: FormEvent<HTMLFormElement>) {
@@ -35,13 +38,17 @@ export function Users({ onChange, onPasswordReset }: { onChange: () => void; onP
   }
 
   return <>
-    <SectionHeader title="用户管理" actions={<Button onClick={() => setEditing("new")}><Plus size={17} />新建用户</Button>} />
+    <SectionHeader title="用户管理" actions={<Button disabled={!roles.length} onClick={() => setEditing("new")}><Plus size={17} />新建用户</Button>} />
+    {catalog.error && <div className="mb-4">
+      <Notice error>{catalog.error.message}</Notice>
+      <Button className="mt-3" variant="outline" onClick={catalog.reload}>重新加载角色</Button>
+    </div>}
     <form className="user-filters" onSubmit={search}>
       <label className="search-box"><Search size={17} />
         <input className="field" name="q" type="search" aria-label="搜索用户" maxLength={100} defaultValue={filters.q}
           placeholder="搜索用户名或显示名称" />
       </label>
-      <select className="field" name="role" aria-label="筛选角色"><option value="">全部角色</option><RoleOptions /></select>
+      <select className="field" name="role" aria-label="筛选角色"><option value="">全部角色</option><RoleOptions roles={roles} /></select>
       <select className="field" name="status" aria-label="筛选状态">
         <option value="">全部状态</option><option value="ACTIVE">启用</option><option value="DISABLED">停用</option>
       </select>
@@ -57,7 +64,7 @@ export function Users({ onChange, onPasswordReset }: { onChange: () => void; onP
                 <th scope="col">创建时间</th><th scope="col">操作</th></tr></thead>
               <tbody>{rows.map((user) => <tr key={user.username}>
                 <td className="title-cell"><strong>{user.displayName}</strong><small>{user.username}</small></td>
-                <td>{roles[user.role]}</td>
+                <td>{roleNames.get(user.role) ?? user.role}</td>
                 <td><span className={"status-chip status-" + (user.status === "ACTIVE" ? "green" : "neutral")}>
                   <span className="status-dot" />{user.status === "ACTIVE" ? "启用" : "停用"}
                 </span></td>
@@ -65,7 +72,7 @@ export function Users({ onChange, onPasswordReset }: { onChange: () => void; onP
                   {new Date(user.createdAt).toLocaleString("zh-CN", { hour12: false })}
                 </time></td>
                 <td><div className="flex flex-wrap gap-1">
-                  <Button type="button" variant="ghost" size="sm" aria-label={"编辑 " + user.username}
+                  <Button type="button" variant="ghost" size="sm" disabled={!roles.length} aria-label={"编辑 " + user.username}
                     onClick={() => setEditing(user)}>编辑</Button>
                   <Button type="button" variant="ghost" size="sm"
                     aria-label={(user.status === "ACTIVE" ? "停用 " : "恢复 ") + user.username}
@@ -78,16 +85,16 @@ export function Users({ onChange, onPasswordReset }: { onChange: () => void; onP
           </div>}
       {result.data && !result.error && <Pagination page={page} size={size} total={result.data.total} change={setPage} />}
     </section>
-    {editing && <UserForm user={editing === "new" ? undefined : editing} close={() => setEditing(null)} updated={updated} />}
+    {editing && <UserForm user={editing === "new" ? undefined : editing} roles={roles} close={() => setEditing(null)} updated={updated} />}
     {managing && <UserActionDialog {...managing} close={() => setManaging(null)} updated={updated} onPasswordReset={onPasswordReset} />}
   </>
 }
 
-function RoleOptions() {
-  return <>{Object.entries(roles).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</>
+function RoleOptions({ roles }: { roles: RoleSummary[] }) {
+  return <>{roles.map(({ id, name }) => <option key={id} value={id}>{name}</option>)}</>
 }
 
-function UserForm({ user, close, updated }: { user?: User; close: () => void; updated: () => void }) {
+function UserForm({ user, roles, close, updated }: { user?: User; roles: RoleSummary[]; close: () => void; updated: () => void }) {
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState("")
   const [created, setCreated] = useState<IssuedPassword>()
@@ -117,7 +124,7 @@ function UserForm({ user, close, updated }: { user?: User; close: () => void; up
         <label>用户名<input className="field" name="username" required minLength={3} maxLength={50}
           pattern="[a-zA-Z0-9_.\\-]{3,50}" title="3–50 位字母、数字或 ._-" autoComplete="off" /></label>}
       <label>显示名称<input className="field" name="displayName" defaultValue={user?.displayName} required maxLength={100} /></label>
-      <label>角色<select className="field" name="role" aria-label="角色" defaultValue={user?.role ?? "READ_ONLY"}><RoleOptions /></select></label>
+      <label>角色<select className="field" name="role" aria-label="角色" defaultValue={user?.role ?? "READ_ONLY"}><RoleOptions roles={roles} /></select></label>
       <div className="modal-actions">
         <Button type="button" variant="outline" disabled={busy} onClick={close}>取消</Button>
         <Button disabled={busy}>{user ? "保存修改" : "创建账号"}</Button>

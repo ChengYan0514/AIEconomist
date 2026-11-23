@@ -73,6 +73,10 @@ export function jobPath(id: string) {
   return "/jobs/" + encodeURIComponent(id)
 }
 
+export function rolePath(id: string) {
+  return "/roles/" + encodeURIComponent(id)
+}
+
 export function dateLabel(value?: string | null) {
   if (!value) return "—"
   return new Intl.DateTimeFormat("zh-CN", {

@@ -4,7 +4,6 @@ import com.paperflow.account.AccountService;
 import com.paperflow.account.Accounts;
 import com.paperflow.account.model.AccountAccess;
 import com.paperflow.account.model.Permission;
-import com.paperflow.account.model.Role;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import org.springframework.http.HttpStatus;
@@ -38,7 +37,7 @@ public class AccountController {
     }
 
     record Login(String username, String password) {}
-    record Session(String username, String displayName, Role role, boolean mustChangePassword, Set<Permission> permissions) {
+    record Session(String username, String displayName, String role, boolean mustChangePassword, Set<Permission> permissions) {
         static Session from(AccountAccess account) {
             return new Session(account.username(), account.displayName(), account.role(),
                     account.mustChangePassword(), account.permissions());
