@@ -107,6 +107,8 @@ class SecurityConfiguration {
                 .requestMatchers(auditPaths).denyAll()
                 .requestMatchers(POST, "/api/users").access(access.requireAction(SYSTEM_MANAGE, "USER_CREATE", "USER_COLLECTION", "users"))
                 .requestMatchers(PATCH, "/api/users/{username}").access(access.requireAction(SYSTEM_MANAGE, "USER_UPDATE", "USER", null))
+                .requestMatchers(PUT, "/api/users/{username}/status").access(access.requireAction(SYSTEM_MANAGE, "USER_STATUS_CHANGE", "USER", null))
+                .requestMatchers(POST, "/api/users/{username}/reset-password").access(access.requireAction(SYSTEM_MANAGE, "USER_PASSWORD_RESET", "USER", null))
                 .requestMatchers("/api/users", "/api/users/**").access(access.require(SYSTEM_MANAGE))
                 .requestMatchers(GET, "/api/papers/export").access(csvAccess)
                 .requestMatchers(HEAD, "/api/papers/export").access(csvAccess)

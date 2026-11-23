@@ -115,16 +115,10 @@ paths:
         '201':
           description: 新用户及仅在本次响应中展示的临时密码
           headers:
-            Cache-Control:
-              schema: {type: string, const: no-store}
+            Cache-Control: {$ref: '#/components/headers/NoStore'}
           content:
             application/json:
-              schema:
-                type: object
-                required: [user, temporaryPassword]
-                properties:
-                  user: {$ref: '#/components/schemas/PlatformUser'}
-                  temporaryPassword: {type: string, format: password, readOnly: true}
+              schema: {$ref: '#/components/schemas/IssuedPassword'}
         '400': {$ref: '#/components/responses/Error'}
         '403': {$ref: '#/components/responses/Error'}
         '409': {$ref: '#/components/responses/Error', description: USERNAME_TAKEN}
@@ -149,6 +143,47 @@ paths:
         '403': {$ref: '#/components/responses/Error'}
         '404': {$ref: '#/components/responses/Error'}
         '409': {$ref: '#/components/responses/Error', description: LAST_SYSTEM_ADMIN}
+  /users/{username}/status:
+    parameters: [{$ref: '#/components/parameters/Username'}]
+    put:
+      operationId: setUserStatus
+      description: 需要 SYSTEM_MANAGE。停用会撤销旧会话，恢复后需要重新登录。账号和任务历史保留。状态相同时保留原状态。
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [status]
+              properties:
+                status: {$ref: '#/components/schemas/UserStatus'}
+      responses:
+        '200':
+          description: 当前平台用户
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/PlatformUser'}
+        '400': {$ref: '#/components/responses/Error'}
+        '401': {$ref: '#/components/responses/Error'}
+        '403': {$ref: '#/components/responses/Error'}
+        '404': {$ref: '#/components/responses/Error'}
+        '409': {$ref: '#/components/responses/Error', description: LAST_SYSTEM_ADMIN}
+  /users/{username}/reset-password:
+    parameters: [{$ref: '#/components/parameters/Username'}]
+    post:
+      operationId: resetUserPassword
+      description: 需要 SYSTEM_MANAGE。撤销旧会话和旧密码。账号启用后可用新临时密码登录并设置个人密码。
+      responses:
+        '200':
+          description: 平台用户及仅在本次响应中展示的新临时密码
+          headers:
+            Cache-Control: {$ref: '#/components/headers/NoStore'}
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/IssuedPassword'}
+        '401': {$ref: '#/components/responses/Error'}
+        '403': {$ref: '#/components/responses/Error'}
+        '404': {$ref: '#/components/responses/Error'}
   /papers:
     get:
       operationId: listPapers
@@ -547,9 +582,13 @@ components:
   parameters:
     PaperId: {name: paperId, in: path, required: true, schema: {type: string}}
     JobId: {name: jobId, in: path, required: true, schema: {type: string, format: uuid}}
+    Username: {name: username, in: path, required: true, schema: {type: string}}
     Version: {name: version, in: query, required: true, schema: {type: integer, format: int64, minimum: 0}}
     Page: {name: page, in: query, schema: {type: integer, minimum: 0, default: 0}}
     Size: {name: size, in: query, schema: {type: integer, minimum: 1, maximum: 100, default: 20}}
+  headers:
+    NoStore:
+      schema: {type: string, const: no-store}
   responses:
     Error:
       description: 统一错误响应
@@ -609,6 +648,12 @@ components:
             username: {type: string}
             status: {$ref: '#/components/schemas/UserStatus'}
             createdAt: {type: string, format: date-time}
+    IssuedPassword:
+      type: object
+      required: [user, temporaryPassword]
+      properties:
+        user: {$ref: '#/components/schemas/PlatformUser'}
+        temporaryPassword: {type: string, format: password, readOnly: true}
     Permission:
       type: string
       enum: [PAPER_READ, CONTENT_READ, PAPER_CSV_EXPORT, PAPER_WRITE, JOB_READ, PDF_PARSE, FULL_TEXT_IMPORT, OPENALEX_MANAGE, SYSTEM_MANAGE]
@@ -637,7 +682,7 @@ components:
         eventId: {type: integer, format: int64}
         occurredAt: {type: string, format: date-time}
         actor: {type: string}
-        action: {type: string, description: 含 PAPER_CSV_EXPORT、USER_CREATE、USER_DISPLAY_NAME_CHANGE 和 USER_ROLE_CHANGE}
+        action: {type: string, description: 含 PAPER_CSV_EXPORT、USER_CREATE、USER_DISPLAY_NAME_CHANGE、USER_ROLE_CHANGE、USER_DISABLE、USER_ENABLE 和 USER_PASSWORD_RESET}
         objectType: {type: string, description: CSV 导出的对象类型为 PAPER_COLLECTION，用户变更的对象类型为 USER}
         objectId: {type: string, description: CSV 导出的对象 ID 为 papers，用户变更的对象 ID 为用户名}
         outcome: {$ref: '#/components/schemas/AuditOutcome'}

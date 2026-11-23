@@ -26,10 +26,10 @@
 | `display_name` | `varchar(100)`，必填 | 可编辑的显示名称。旧账号迁移时取原用户名。 |
 | `role` | `varchar(32)`，必填 | 用户的单个角色。迁移时旧账号保留为系统管理员。 |
 | `enabled` | `boolean`，必填，默认 `true` | 账号是否启用。 |
-| `must_change_password` | `boolean`，必填，默认 `false` | 通过用户管理新建的账号需要设置个人密码。 |
-| `credential_version` | `bigint`，必填，默认 `0` | 改密时递增，旧会话登录时保存的版本会失效。 |
+| `must_change_password` | `boolean`，必填，默认 `false` | 新建或重置临时密码后需要设置个人密码。 |
+| `credential_version` | `bigint`，必填，默认 `0` | 启停、重置或个人改密时递增，旧会话登录时保存的版本会失效。 |
 
-启动时可由 `PAPERFLOW_ADMIN_USERNAME` 和 `PAPERFLOW_ADMIN_PASSWORD` 创建指定的缺失系统管理员。V3 在同一表登记所有账号，保留既有用户的散列、用户名和任务外键。角色和启停状态在业务请求时读取。用户资料和对应审计成功事件在同一事务写入，并为角色变更获取 PostgreSQL 事务锁，确保并发修改后仍有启用的系统管理员。 [账号迁移](../backend/src/main/resources/db/migration/V3__platform_users.sql) · [账号查询](../backend/src/main/java/com/paperflow/adapters/persistence/AccountMapper.java) · [安全配置](../backend/src/main/java/com/paperflow/main/SecurityConfiguration.java)
+启动时可由 `PAPERFLOW_ADMIN_USERNAME` 和 `PAPERFLOW_ADMIN_PASSWORD` 创建指定的缺失系统管理员。V3 在同一表登记所有账号，保留既有用户的散列、用户名和任务外键。角色、启停状态及凭据版本在业务请求时读取。用户资料变更、启停和重置密码均与对应审计成功事件在同一事务写入。停用和角色调整共用 PostgreSQL 事务锁，确保并发修改后仍有启用的系统管理员。 [账号迁移](../backend/src/main/resources/db/migration/V3__platform_users.sql) · [账号查询](../backend/src/main/java/com/paperflow/adapters/persistence/AccountMapper.java) · [安全配置](../backend/src/main/java/com/paperflow/main/SecurityConfiguration.java)
 
 ### `v2_audit_event`
 

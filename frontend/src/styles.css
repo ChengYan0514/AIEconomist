@@ -329,5 +329,5 @@ input[type="checkbox"] { accent-color: var(--accent); width: 15px; height: 15px;
 }
 .user-filters .search-box { flex: 1 1 220px; }
 .user-filters select { width: auto; min-width: min(100%, 140px); }
-.user-table { min-width: 620px; }
+.user-table { min-width: 760px; }
 .user-table .title-cell { overflow-wrap: anywhere; }

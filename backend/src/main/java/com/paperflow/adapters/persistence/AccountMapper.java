@@ -57,6 +57,13 @@ public interface AccountMapper extends Accounts {
     int changePassword(String username, long credentialVersion, String passwordHash);
 
     @Override
+    @Update("""
+            UPDATE v2_admin SET password_hash = #{passwordHash}, must_change_password = true,
+                credential_version = credential_version + 1 WHERE username = #{username}
+            """)
+    void resetPassword(String username, String passwordHash);
+
+    @Override
     @Select("SELECT true FROM pg_advisory_xact_lock(hashtext(current_schema()), 1178512460)")
     boolean lockManagement();
 
@@ -67,4 +74,11 @@ public interface AccountMapper extends Accounts {
     @Override
     @Update("UPDATE v2_admin SET display_name = #{displayName}, role = #{role} WHERE username = #{username}")
     void updateProfile(String username, String displayName, Role role);
+
+    @Override
+    @Update("""
+            UPDATE v2_admin SET enabled = #{enabled}, credential_version = credential_version + 1
+            WHERE username = #{username}
+            """)
+    void setEnabled(String username, boolean enabled);
 }
