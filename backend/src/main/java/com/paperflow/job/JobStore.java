@@ -9,7 +9,8 @@ public interface JobStore {
     JobSummary get(UUID id);
     List<JobSummary> list(JobKind kind, String state, int size, long offset);
     long count(JobKind kind, String state);
-    List<JobItem> items(UUID id, int size, long offset);
+    List<JobItem> items(UUID id, String state, int size, long offset);
+    long countItems(UUID id, String state);
     int confirm(UUID id);
     int queueReady(UUID id);
     int retryFailed(UUID id, UUID previous);

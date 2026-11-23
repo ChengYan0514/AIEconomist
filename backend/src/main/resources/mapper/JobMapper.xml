@@ -1,9 +1,12 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
 <mapper namespace="com.paperflow.adapters.persistence.JobMapper">
+    <sql id="retryableInput">
+        (kind != 'ORIGINAL_IMPORT' OR input != '{}'::jsonb)
+    </sql>
     <sql id="summary">
         SELECT j.job_id, j.kind, j.username, j.retry_of, j.created_at, j.confirmed_at, j.scope::text AS scope,
-            i.total, i.ready, i.queued, i.running, i.succeeded, i.skipped, i.failed,
+            i.total, i.ready, i.queued, i.running, i.succeeded, i.skipped, i.failed, i.has_retryable_failure,
             CASE WHEN i.running &gt; 0 OR (i.queued &gt; 0 AND i.succeeded + i.failed + i.skipped &gt; 0 AND i.ready = 0
                                 AND (j.kind != 'ORIGINAL_IMPORT' OR j.confirmed_at IS NOT NULL)) THEN 'RUNNING'
                  WHEN i.queued &gt; 0 THEN 'QUEUED'
@@ -20,13 +23,18 @@
                 (count(*) FILTER (WHERE x.state = 'RUNNING'))::int AS running,
                 (count(*) FILTER (WHERE x.state = 'SUCCEEDED'))::int AS succeeded,
                 (count(*) FILTER (WHERE x.state = 'SKIPPED'))::int AS skipped,
-                (count(*) FILTER (WHERE x.state = 'FAILED'))::int AS failed
+                (count(*) FILTER (WHERE x.state = 'FAILED'))::int AS failed,
+                count(*) FILTER (WHERE x.state = 'FAILED' AND <include refid="retryableInput"/>) &gt; 0 AS has_retryable_failure
             FROM v2_job_item x WHERE x.job_id = j.job_id
         ) i
     </sql>
     <sql id="filters">
         WHERE true
         <if test="kind != null">AND kind = #{kind}</if>
+        <if test="state != null and state != ''">AND state = #{state}</if>
+    </sql>
+    <sql id="itemFilters">
+        WHERE job_id = CAST(#{id} AS uuid)
         <if test="state != null and state != ''">AND state = #{state}</if>
     </sql>
     <sql id="itemFields">
@@ -56,8 +64,11 @@
         SELECT count(*) FROM (<include refid="summary"/>) j <include refid="filters"/>
     </select>
     <select id="items" resultType="com.paperflow.job.JobItem">
-        SELECT <include refid="itemFields"/> FROM v2_job_item WHERE job_id = CAST(#{id} AS uuid)
+        SELECT <include refid="itemFields"/> FROM v2_job_item <include refid="itemFilters"/>
         ORDER BY sequence LIMIT #{size} OFFSET #{offset}
+    </select>
+    <select id="countItems" resultType="long">
+        SELECT count(*) FROM v2_job_item <include refid="itemFilters"/>
     </select>
     <update id="confirm">
         UPDATE v2_job SET confirmed_at = now() WHERE job_id = CAST(#{id} AS uuid) AND confirmed_at IS NULL
@@ -70,7 +81,7 @@
         SELECT CAST(#{id} AS uuid), kind, sequence, target, paper_id, file_revision, record_version, input, 'QUEUED',
                CASE WHEN kind = 'PARSE' THEN result END
         FROM v2_job_item WHERE job_id = CAST(#{previous} AS uuid) AND state = 'FAILED'
-        AND (kind != 'ORIGINAL_IMPORT' OR input != '{}'::jsonb)
+        AND <include refid="retryableInput"/>
     </insert>
     <select id="claim" resultType="com.paperflow.job.JobItem" affectData="true" flushCache="true">
         WITH chosen AS (

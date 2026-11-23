@@ -127,7 +127,7 @@ S123,2024,Example paper,Alice;Bob,files/paper.pdf
 | `POST /api/jobs` | JSON `kind` 和处理范围 | `202`，新任务摘要 |
 | `GET /api/jobs` | 可选 `kind`、`state`、`page`、`size` | `200`，按创建时间倒序的任务分页 |
 | `GET /api/jobs/{jobId}` | 任务 UUID | `200`，任务摘要 |
-| `GET /api/jobs/{jobId}/items` | 任务 UUID，可选 `page`、`size` | `200`，按 `sequence` 排序的任务项分页 |
+| `GET /api/jobs/{jobId}/items` | 任务 UUID，可选 `state`、`page`、`size` | `200`，按 `sequence` 排序的任务项分页 |
 | `POST /api/jobs/{jobId}/retry` | 已结束且存在可重试失败项的任务 UUID，无请求体 | `202`，只包含可重试失败项的新任务摘要 |
 
 | `kind` | 提交时的范围与用途 |
@@ -140,11 +140,11 @@ S123,2024,Example paper,Alice;Bob,files/paper.pdf
 
 `paperIds` 和 `sourceId` 二选一。`paperIds` 至少包含一个论文 ID，每个 ID 最长 255 个字符，服务端对重复 ID 去重。通过 `sourceId` 提交时，可加 `yearFrom`、`yearTo`，规则与论文筛选相同。每个论文处理任务最多接收 10,000 篇论文，提交时固定目标集合。归档论文、已有匹配或不符合当前处理阶段的输入可被跳过，具体见逐项 `message`。
 
-任务摘要返回 `jobId`、`kind`、`state`、`username`、`retryOf`、`createdAt`、`finishedAt`、`confirmedAt`、`scope`，以及 `total`、`ready`、`queued`、`running`、`succeeded`、`skipped`、`failed` 计数。`retryOf`、`finishedAt`、`confirmedAt` 可为 `null`。`scope` 包含来源范围、`selectedCount` 或 ZIP 的 `filename`。重试响应的 `retryOf` 指向原任务，后续使用新 `jobId` 查询结果。
+任务摘要返回 `jobId`、`kind`、`state`、`username`、`retryOf`、`createdAt`、`finishedAt`、`confirmedAt`、`scope`，以及 `total`、`ready`、`queued`、`running`、`succeeded`、`skipped`、`failed` 计数和 `canRetry`。`retryOf`、`finishedAt`、`confirmedAt` 可为 `null`。`scope` 包含来源范围、`selectedCount` 或 ZIP 的 `filename`。`canRetry` 表示整个任务已经结束并有可重试的失败项，调用者还需相应任务类型的执行权限。重试范围包含整个任务中符合条件的失败项，重试响应的 `retryOf` 指向原任务。
 
 任务摘要状态为 `READY`、`QUEUED`、`RUNNING`、`SUCCEEDED`、`FAILED`、`PARTIAL`。`READY` 表示有项目等待确认。`queued + running` 大于零时可继续轮询。终态中，有成功项和失败项时为 `PARTIAL`，有失败项且无成功项时为 `FAILED`，无失败项时为 `SUCCEEDED`，包括全部跳过的情况。
 
-任务项返回 `sequence`、`target`、`paperId`、`state`、`message`、`result`。项状态为 `READY`、`QUEUED`、`RUNNING`、`SUCCEEDED`、`SKIPPED`、`FAILED`。`paperId`、`message`、`result` 可为 `null`。`result` 随类型变化，例如导入原件的 `{paperId}`、OpenAlex 元数据导入的 `{imported}`、匹配的 `{message, candidates, matched}`，以及解析执行时登记的 `{taskId, fileId, uploaded}`。当 `succeeded`、`skipped` 或 `failed` 非零时，可在任务项中进一步判断每个目标的结果。
+任务项返回 `sequence`、`target`、`paperId`、`state`、`message`、`result` 和 `inputError`。`inputError` 为真时，需修正 ZIP 输入并重新上传。项状态为 `READY`、`QUEUED`、`RUNNING`、`SUCCEEDED`、`SKIPPED`、`FAILED`。`state` 按任务项状态精确筛选，空值返回所有状态，其他非空值返回空列表。任务项的分页总数按筛选结果计算，任务摘要继续统计整个任务。`paperId`、`message`、`result` 可为 `null`。`result` 随类型变化，例如导入原件的 `{paperId}`、OpenAlex 元数据导入的 `{imported}`、匹配的 `{message, candidates, matched}`，以及解析执行时登记的 `{taskId, fileId, uploaded}`。当 `succeeded`、`skipped` 或 `failed` 非零时，可在任务项中进一步判断每个目标的结果。
 
 ## OpenAlex 出版来源和匹配
 

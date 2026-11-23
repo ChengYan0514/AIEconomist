@@ -32,7 +32,7 @@ export async function api<T>(path: string, init: RequestInit = {}): Promise<T> {
 }
 
 export function useQuery<T>(path: string | null) {
-  const [data, setData] = useState<T>()
+  const [result, setResult] = useState<{ data: T; path: string }>()
   const [error, setError] = useState<Error>()
   const [loading, setLoading] = useState(Boolean(path))
   const [count, setCount] = useState(0)
@@ -43,8 +43,8 @@ export function useQuery<T>(path: string | null) {
     let active = true
     setLoading(true)
     setError(undefined)
-    api<T>(path).then((result) => {
-      if (active) setData(result)
+    api<T>(path).then((data) => {
+      if (active) setResult({ data, path })
     }).catch((reason: Error) => {
       if (active) setError(reason)
     }).finally(() => {
@@ -53,7 +53,7 @@ export function useQuery<T>(path: string | null) {
     return () => { active = false }
   }, [path, count])
 
-  return { data, error, loading, reload }
+  return { data: result?.data, dataPath: result?.path, error, loading, reload }
 }
 
 export function params(values: Record<string, string | number | boolean | undefined>) {

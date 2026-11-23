@@ -1,15 +1,16 @@
 import { ArrowLeft, CalendarDays, CircleHelp, ClipboardList, FileArchive, RotateCcw, Workflow } from "lucide-react"
 import { useEffect, useState } from "react"
 import { api, dateLabel, errorMessage, jobPath, paperPath, params, useQuery } from "./api"
-import { Empty, JobChip, Loading, Notice, Pagination, jobKinds } from "./components/shared"
+import { Empty, JobChip, Loading, Notice, Pagination, jobKinds, jobLabels } from "./components/shared"
 import { Button } from "./components/ui/button"
 import { SectionHeader } from "./components/workspace"
 import { ArchiveUpload, ProcessPapers } from "./papers/forms"
 import { usePermissions } from "./permissions"
-import type { Job, JobItem, JobKind, JobState, Page, Paper } from "./types"
+import type { Job, JobItem, JobItemState, JobKind, JobState, Page, Paper } from "./types"
 
 const size = 20
-const states: [JobState, string][] = [["READY", "待确认"], ["QUEUED", "排队中"], ["RUNNING", "处理中"], ["SUCCEEDED", "已完成"], ["PARTIAL", "部分完成"], ["FAILED", "失败"]]
+const states: JobState[] = ["READY", "QUEUED", "RUNNING", "SUCCEEDED", "PARTIAL", "FAILED"]
+const itemStates: JobItemState[] = ["READY", "QUEUED", "RUNNING", "SUCCEEDED", "SKIPPED", "FAILED"]
 
 export function Jobs() {
   const { canJob, canProcess } = usePermissions()
@@ -33,7 +34,7 @@ export function Jobs() {
             <option value="">全部类型</option>{Object.entries(jobKinds).map(([value, label]) => <option key={value} value={value}>{label}</option>)}
           </select>
           <select className="field" aria-label="任务状态" value={state} onChange={(event) => { setState(event.target.value); setPage(0) }}>
-            <option value="">全部状态</option>{states.map(([value, label]) => <option key={value} value={value}>{label}</option>)}
+            <option value="">全部状态</option>{states.map((value) => <option key={value} value={value}>{jobLabels[value][0]}</option>)}
           </select>
           <Button variant="outline" size="icon" onClick={result.reload} aria-label="刷新任务"><RotateCcw size={15} /></Button>
         </div>
@@ -57,13 +58,16 @@ export function Jobs() {
 export function JobDetail({ id }: { id: string }) {
   const { can, canJob } = usePermissions()
   const path = jobPath(id)
+  const [state, setState] = useState("")
   const [page, setPage] = useState(0)
   const [error, setError] = useState("")
   const [busy, setBusy] = useState(false)
   const overview = useQuery<Job>(path)
-  const details = useQuery<Page<JobItem>>(path + "/items" + params({ page, size }))
+  const itemsPath = path + "/items" + params({ state, page, size })
+  const details = useQuery<Page<JobItem>>(itemsPath)
+  const itemPage = details.dataPath === itemsPath ? details.data : undefined
   const job = overview.data
-  const pendingItems = details.data?.items.some((item) => item.state === "QUEUED" || item.state === "RUNNING")
+  const pendingItems = itemPage?.items.some((item) => item.state === "QUEUED" || item.state === "RUNNING")
   useRefresh(Boolean((job && active(job)) || pendingItems), overview.reload, details.reload)
   if (!job) return overview.error ? <Notice error>{overview.error.message}</Notice> : <Loading />
 
@@ -78,10 +82,13 @@ export function JobDetail({ id }: { id: string }) {
   }
 
   return <>
-    <SectionHeader title={jobKinds[job.kind]} back={<a href="/jobs" className="back-link"><ArrowLeft size={15} />返回导入与处理</a>}
+    <SectionHeader title={jobKinds[job.kind]} back={<div className="flex flex-wrap items-center gap-x-4">
+      <a href="/jobs" className="back-link"><ArrowLeft size={15} />返回导入与处理</a>
+      {job.retryOf && <a href={jobPath(job.retryOf)} className="back-link">查看原任务</a>}
+    </div>}
       description={job.scope?.filename || job.scope?.sourceId || "所选论文"} actions={<>
         {canJob("ORIGINAL_IMPORT") && job.state === "READY" && <Button disabled={busy} onClick={() => action("confirm")}>确认导入 {job.ready} 条</Button>}
-        {canJob(job.kind) && !active(job) && job.failed > 0 && job.ready === 0 && (job.kind !== "ORIGINAL_IMPORT" || job.confirmedAt) &&
+        {canJob(job.kind) && job.canRetry &&
           <Button disabled={busy} variant="outline" onClick={() => action("retry")}><RotateCcw size={16} />重试失败项</Button>}
       </>} />
     {error && <Notice error>{error}</Notice>}
@@ -93,21 +100,33 @@ export function JobDetail({ id }: { id: string }) {
     </div>
     {job.state === "READY" && <Notice>请核对预检结果。确认后仅处理通过预检的记录，跳过重复行和有问题的行。</Notice>}
     <section className="panel mt-4">
-      <div className="panel-bar"><div className="panel-title"><ClipboardList size={19} /><strong>逐项结果</strong></div></div>
-      {details.error ? <div className="p-5"><Notice error>{details.error.message}</Notice></div> : !details.data ? <Loading /> :
+      <div className="panel-bar">
+        <div className="panel-title"><ClipboardList size={19} /><strong>逐项结果</strong></div>
+        <div className="job-filters">
+          <select className="field" aria-label="任务项状态" value={state} onChange={(event) => { setState(event.target.value); setPage(0) }}>
+            <option value="">全部任务项</option>{itemStates.map((value) => <option key={value} value={value}>{jobLabels[value][0]}</option>)}
+          </select>
+        </div>
+      </div>
+      {details.error ? <div className="p-5"><Notice error>{details.error.message}</Notice></div> : !itemPage ? <Loading /> :
+        itemPage.items.length === 0 ? <Empty title="没有符合条件的任务项" /> :
         <div className="table-scroll"><table className="data-table"><thead><tr><th>对象</th><th>状态</th><th>结果</th></tr></thead>
-          <tbody>{details.data.items.map((item) => <tr key={item.sequence}>
+          <tbody>{itemPage.items.map((item) => <tr key={item.sequence}>
             <td className="title-cell">{item.paperId && (item.state === "SUCCEEDED" || job.kind !== "ORIGINAL_IMPORT" || item.result?.paperId) ?
               <a href={paperPath(item.paperId)}>{item.target}</a> : item.target}</td>
-            <td>{item.result?.candidates && item.result.candidates.length > 1 ?
-              <span className="status-chip status-blue"><span className="status-dot" />待确认匹配</span> : <JobChip status={item.state} />}</td>
+            <td><div className="flex flex-wrap gap-1">
+              <JobChip status={item.state} />
+              {item.result?.candidates && item.result.candidates.length > 1 &&
+                <span className="status-chip status-blue"><span className="status-dot" />待确认匹配</span>}
+            </div></td>
             <td className="result-cell"><span>{item.message || "—"}</span>
+              {item.inputError && <small className="block mt-1">修正输入后重新上传 ZIP</small>}
               {canJob("PUBLISH") && job.kind === "PARSE" && item.state === "SUCCEEDED" && item.paperId && <PublishParsed paperId={item.paperId} />}
               {canJob("MATCH") && can("PAPER_READ") && item.result?.candidates && item.result.candidates.length > 1 && item.paperId && <CandidatePicker item={item} />}
             </td>
           </tr>)}</tbody>
         </table></div>}
-      {details.data && <Pagination total={details.data.total} page={page} size={size} change={setPage} />}
+      {itemPage && <Pagination total={itemPage.total} page={page} size={size} change={setPage} />}
     </section>
   </>
 }
