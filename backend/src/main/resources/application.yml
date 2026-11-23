@@ -1,0 +1,46 @@
+spring:
+  config:
+    import: optional:file:.env[.properties],optional:file:../.env[.properties]
+  datasource:
+    url: ${PAPERFLOW_JDBC_URL:jdbc:postgresql://${PAPERFLOW_DB_HOST:localhost}:${PAPERFLOW_DB_PORT:5432}/${PAPERFLOW_DB_NAME:openalex}?currentSchema=${PAPERFLOW_DB_SCHEMA:widi_chengyan}}
+    username: ${PAPERFLOW_DB_USER:paperflow}
+    password: ${PAPERFLOW_DB_PASSWORD:}
+    hikari:
+      maximum-pool-size: 8
+  flyway:
+    table: v2_flyway_schema_history
+    create-schemas: false
+    baseline-on-migrate: true
+    baseline-version: 0
+    clean-disabled: true
+  servlet:
+    multipart:
+      max-file-size: 256MB
+      max-request-size: 257MB
+server:
+  address: ${PAPERFLOW_ADDRESS:127.0.0.1}
+  port: ${PAPERFLOW_PORT:8095}
+  servlet:
+    session:
+      timeout: 8h
+      cookie:
+        name: PAPERFLOW_SESSION
+        http-only: true
+        secure: ${PAPERFLOW_SECURE_COOKIE:false}
+        same-site: lax
+mybatis-plus:
+  type-handlers-package: com.paperflow.adapters.persistence.types
+  mapper-locations: classpath:/mapper/*.xml
+  configuration:
+    map-underscore-to-camel-case: true
+    arg-name-based-constructor-auto-mapping: true
+paperflow:
+  storage: ${PAPERFLOW_STORAGE:var/paperflow}
+  legacy-storage: ${PAPERFLOW_LEGACY_STORAGE:${DATA_ROOT:var/legacy}}
+  openalex-schema: ${PAPERFLOW_OPENALEX_SCHEMA:${OPENALEX_DB_SCHEMA:dataset_20241125}}
+  mineru-url: ${PAPERFLOW_MINERU_URL:http://127.0.0.1:${PAPERFLOW_MINERU_PORT:18002}}
+  mineru-tier: ${PAPERFLOW_MINERU_TIER:}
+  mineru-timeout: ${PAPERFLOW_MINERU_TIMEOUT:PT1H}
+  admin-username: ${PAPERFLOW_ADMIN_USERNAME:}
+  admin-password: ${PAPERFLOW_ADMIN_PASSWORD:}
+  job-delay: ${PAPERFLOW_JOB_DELAY:1000}

@@ -2,13 +2,13 @@
 
 ## 项目与常用命令
 
-当前为新项目起点。首次明确需求后，用一句话写明项目服务的用户及其用途。脚手架就绪后，填写并验证从仓库根目录执行的命令。
+Paperflow 服务于论文数据管理员，用于管理论文原始文件、解析产物和可选的 OpenAlex 元数据关联。以下命令从仓库根目录执行。
 
 | 操作 | 命令 |
 | --- | --- |
-| 安装依赖 | 待补充 |
-| 运行测试 | 待补充 |
-| 本地启动 | 待补充 |
+| 安装依赖 | `mvn -f backend/pom.xml dependency:resolve` 和 `npm --prefix frontend ci` |
+| 运行测试 | `mvn -f backend/pom.xml test` 和 `npm --prefix frontend run build` |
+| 本地启动 | 配置 `.env` 后运行 `docker compose up -d --wait --wait-timeout 600 mineru`，再在两个终端分别运行 `mvn -f backend/pom.xml spring-boot:run` 和 `npm --prefix frontend run dev` |
 
 ## 开工前
 
@@ -20,8 +20,8 @@
 
 ## 技术栈
 
-- 后端使用 Java 21、Spring Boot 3.x 和 Flyway。Spring Data JPA 与 MyBatis-Plus 二选一，选定后全项目统一使用。
-- 前端使用 TypeScript 和 Tailwind CSS。React 与 Vue 3 二选一，组件库在 shadcn/ui 与 Ant Design 中选择适配所选框架的方案。使用现代前端应用构建界面，禁止引入传统服务端页面模板。
+- 后端使用 Java 17、Spring Boot 3.x、Flyway 和 MyBatis-Plus。编译和测试使用 JDK 17。
+- 前端使用 React、TypeScript、Tailwind CSS 和 shadcn/ui。使用现代前端应用构建界面，禁止引入传统服务端页面模板。
 
 ## 何时分层
 

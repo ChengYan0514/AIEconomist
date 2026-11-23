@@ -1,0 +1,89 @@
+package com.paperflow.adapters.web;
+
+import com.fasterxml.jackson.databind.JsonNode;
+import com.paperflow.job.*;
+import com.paperflow.original.OriginalImports;
+import org.springframework.http.HttpStatus;
+import org.springframework.http.MediaType;
+import org.springframework.web.bind.annotation.*;
+import org.springframework.web.multipart.MultipartFile;
+
+import java.io.IOException;
+import java.security.Principal;
+import java.time.OffsetDateTime;
+import java.util.UUID;
+
+@RestController
+@RequestMapping("/api")
+public class JobController {
+    private final JobService jobs;
+    private final OriginalImports originals;
+    private final JobJson json;
+
+    public JobController(JobService jobs, OriginalImports originals, JobJson json) {
+        this.jobs = jobs;
+        this.originals = originals;
+        this.json = json;
+    }
+
+    record StartJob(JobKind kind, java.util.List<String> paperIds, String sourceId, Integer yearFrom, Integer yearTo) {}
+    record JobView(UUID jobId, JobKind kind, String state, String username, UUID retryOf, int total, int ready,
+                   int queued, int running, int succeeded, int skipped, int failed, OffsetDateTime createdAt,
+                   OffsetDateTime finishedAt, OffsetDateTime confirmedAt, JsonNode scope) {}
+    record ItemView(int sequence, String target, String paperId, String state, String message, JsonNode result) {}
+
+    @PostMapping(path = "/imports", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
+    @ResponseStatus(HttpStatus.CREATED)
+    JobView preflight(@RequestParam MultipartFile file, Principal actor) throws IOException {
+        try (var stream = file.getInputStream()) {
+            return view(originals.preflight(actor.getName(), file.getOriginalFilename(), stream));
+        }
+    }
+
+    @PostMapping("/imports/{jobId}/confirm")
+    @ResponseStatus(HttpStatus.ACCEPTED)
+    JobView confirm(@PathVariable UUID jobId) {
+        return view(jobs.confirm(jobId));
+    }
+
+    @GetMapping("/jobs")
+    Page<JobView> list(@RequestParam(required = false) JobKind kind, @RequestParam(required = false) String state,
+                       @RequestParam(defaultValue = "0") int page, @RequestParam(defaultValue = "20") int size) {
+        var rows = jobs.list(kind, state, size, Page.offset(page, size)).stream().map(this::view).toList();
+        return new Page<>(rows, page, size, jobs.count(kind, state));
+    }
+
+    @PostMapping("/jobs")
+    @ResponseStatus(HttpStatus.ACCEPTED)
+    JobView start(@RequestBody StartJob request, Principal actor) {
+        return view(jobs.start(new JobRequest(request.kind(), request.paperIds(), request.sourceId(),
+                request.yearFrom(), request.yearTo()), actor.getName()));
+    }
+
+    @GetMapping("/jobs/{jobId}")
+    JobView detail(@PathVariable UUID jobId) {
+        return view(jobs.get(jobId));
+    }
+
+    @GetMapping("/jobs/{jobId}/items")
+    Page<ItemView> items(@PathVariable UUID jobId, @RequestParam(defaultValue = "0") int page,
+                         @RequestParam(defaultValue = "20") int size) {
+        var job = jobs.get(jobId);
+        var items = jobs.items(jobId, size, Page.offset(page, size)).stream()
+                .map(item -> new ItemView(item.sequence(), item.target(), item.paperId(), item.state(), item.message(),
+                        json.tree(item.result()))).toList();
+        return new Page<>(items, page, size, job.total());
+    }
+
+    @PostMapping("/jobs/{jobId}/retry")
+    @ResponseStatus(HttpStatus.ACCEPTED)
+    JobView retry(@PathVariable UUID jobId, Principal actor) {
+        return view(jobs.retry(jobId, actor.getName()));
+    }
+
+    private JobView view(JobSummary job) {
+        return new JobView(job.jobId(), job.kind(), job.state(), job.username(), job.retryOf(), job.total(),
+                job.ready(), job.queued(), job.running(), job.succeeded(), job.skipped(), job.failed(), job.createdAt(),
+                job.finishedAt(), job.confirmedAt(), json.tree(job.scope()));
+    }
+}

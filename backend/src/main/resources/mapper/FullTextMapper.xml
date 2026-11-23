@@ -1,0 +1,72 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.paperflow.adapters.persistence.FullTextMapper">
+    <select id="artifact" resultType="com.paperflow.fulltext.ParseArtifact">
+        SELECT * FROM v2_parse_artifact WHERE parse_id = CAST(#{id} AS uuid)
+    </select>
+    <select id="legacyContent" resultType="string">
+        SELECT file_path FROM text_file WHERE file_id = #{paperId} AND file_type = 'JSON'
+    </select>
+    <insert id="addArtifact">
+        INSERT INTO v2_parse_artifact (parse_id, paper_id, file_revision, legacy, storage_path, content_path, markdown_path)
+        VALUES (CAST(#{parseId} AS uuid), #{paperId}, #{fileRevision}, #{legacy}, #{storagePath}, #{contentPath}, #{markdownPath})
+    </insert>
+    <update id="markParsed">
+        UPDATE v2_paper SET latest_parse_id = CAST(#{parseId} AS uuid), updated_at = now() WHERE paper_id = #{paperId}
+    </update>
+    <insert id="addBlocks">
+        INSERT INTO v2_content_block (parse_id, sequence, block_type, body, page, image_path, attributes)
+        VALUES <foreach collection="blocks" item="b" separator=",">
+            (CAST(#{parseId} AS uuid), #{b.sequence}, #{b.type}, #{b.text}, #{b.page}, #{b.imagePath}, CAST(#{b.attributes} AS jsonb))
+        </foreach>
+    </insert>
+    <update id="markPublished">
+        UPDATE v2_paper SET published_parse_id = CAST(#{parseId} AS uuid), updated_at = now() WHERE paper_id = #{paperId}
+    </update>
+    <sql id="blockFields">sequence, block_type AS type, body AS text, page, image_path, attributes::text</sql>
+    <select id="blocks" resultType="com.paperflow.fulltext.ContentBlock">
+        SELECT <include refid="blockFields"/> FROM v2_content_block
+        WHERE parse_id = CAST(#{parseId} AS uuid) AND block_type != 'discarded'
+        ORDER BY sequence LIMIT #{size} OFFSET #{offset}
+    </select>
+    <select id="countBlocks" resultType="long">
+        SELECT count(*) FROM v2_content_block WHERE parse_id = CAST(#{parseId} AS uuid) AND block_type != 'discarded'
+    </select>
+    <select id="block" resultType="com.paperflow.fulltext.ContentBlock">
+        SELECT <include refid="blockFields"/> FROM v2_content_block
+        WHERE parse_id = CAST(#{parseId} AS uuid) AND sequence = #{sequence} AND block_type != 'discarded'
+    </select>
+    <sql id="legacyFields">
+        SELECT b.block_seq AS sequence, b.block_type AS type,
+            COALESCE(NULLIF(b.block_text,''), bi.image_caption, bt.table_caption, bf.footnote_text,
+                (SELECT string_agg(r.reference_text, CHR(10) ORDER BY r.reference_seq)
+                 FROM block_reference r WHERE r.block_id = b.block_id)) AS text,
+            COALESCE(b.pdf_page, 0) AS page,
+            CASE WHEN a.path LIKE 'openalex/%' OR a.path LIKE 'paperflow/%' THEN a.path
+                 WHEN a.path IS NOT NULL THEN COALESCE(
+                    (SELECT regexp_replace(tf.file_path, '/[^/]*$', '') || '/'
+                     FROM text_file tf WHERE tf.file_id = b.file_id ORDER BY tf.file_type LIMIT 1), '') || a.path
+            END AS image_path,
+            jsonb_strip_nulls(jsonb_build_object(
+                'bbox', b.pdf_bbox, 'titleLevel', b.title_level, 'imageCaption', bi.image_caption,
+                'imageFootnote', bi.image_footnote, 'tableCaption', bt.table_caption, 'tableFootnote', bt.table_footnote,
+                'equationFormat', be.format, 'footnoteLabel', bf.footnote_label, 'footnoteText', bf.footnote_text
+            ))::text AS attributes
+        FROM block b
+        LEFT JOIN block_image bi ON bi.block_id = b.block_id
+        LEFT JOIN block_table bt ON bt.block_id = b.block_id
+        LEFT JOIN block_equation be ON be.block_id = b.block_id
+        LEFT JOIN block_footnote bf ON bf.block_id = b.block_id
+        CROSS JOIN LATERAL (SELECT COALESCE(bi.image_path, bt.image_path, be.image_path) AS path) a
+        WHERE b.file_id = #{paperId} AND b.block_type != 'discarded'
+    </sql>
+    <select id="legacyBlocks" resultType="com.paperflow.fulltext.ContentBlock">
+        <include refid="legacyFields"/> ORDER BY b.block_seq LIMIT #{size} OFFSET #{offset}
+    </select>
+    <select id="countLegacy" resultType="long">
+        SELECT count(*) FROM block WHERE file_id = #{paperId} AND block_type != 'discarded'
+    </select>
+    <select id="legacyBlock" resultType="com.paperflow.fulltext.ContentBlock">
+        <include refid="legacyFields"/> AND b.block_seq = #{sequence}
+    </select>
+</mapper>

@@ -1,0 +1,88 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.paperflow.adapters.persistence.PaperMapper">
+    <sql id="filter">
+        WHERE archived = #{filter.archived}
+        <if test="filter.q != null">
+            AND (strpos(lower(title), lower(#{filter.q})) > 0
+              OR strpos(lower(paper_id), lower(#{filter.q})) > 0
+              OR strpos(lower(authors), lower(#{filter.q})) > 0
+              OR strpos(lower(doi), lower(#{filter.q})) > 0)
+        </if>
+        <if test="filter.sourceId != null">AND source_id = #{filter.sourceId}</if>
+        <if test="filter.yearFrom != null">AND year &gt;= #{filter.yearFrom}</if>
+        <if test="filter.yearTo != null">AND year &lt;= #{filter.yearTo}</if>
+        <if test="filter.status != null">AND status = #{filter.status}</if>
+    </sql>
+    <select id="get" resultType="com.paperflow.paper.model.Paper">
+        SELECT * FROM v2_paper_read WHERE paper_id = #{id}
+    </select>
+    <select id="getMany" resultType="com.paperflow.paper.model.Paper">
+        SELECT * FROM v2_paper_read WHERE paper_id IN
+        <foreach collection="ids" item="id" open="(" separator="," close=")">#{id}</foreach>
+    </select>
+    <select id="list" resultType="com.paperflow.paper.model.Paper">
+        SELECT * FROM v2_paper_read <include refid="filter"/>
+        ORDER BY updated_at DESC NULLS LAST, paper_id OFFSET #{offset} LIMIT #{size}
+    </select>
+    <select id="selectExport" resultType="com.paperflow.paper.model.Paper" fetchSize="500" resultSetType="FORWARD_ONLY">
+        SELECT * FROM v2_paper_read <include refid="filter"/>
+        ORDER BY updated_at DESC NULLS LAST, paper_id
+    </select>
+    <select id="count" resultType="long">
+        SELECT count(*) FROM v2_paper_read <include refid="filter"/>
+    </select>
+    <select id="atSourceYear" resultType="com.paperflow.paper.manage.PaperStore$IdentityRow">
+        SELECT paper_id, title, authors FROM v2_paper WHERE source_id = #{sourceId} AND publication_year = #{year}
+        UNION ALL
+        SELECT file_id, paper_title, authors FROM original_file WHERE source_id = #{sourceId} AND year = #{year}
+        ORDER BY paper_id
+    </select>
+    <select id="range" resultType="string">
+        SELECT paper_id FROM v2_paper_read WHERE NOT archived AND source_id = #{sourceId}
+        <if test="yearFrom != null">AND year &gt;= #{yearFrom}</if>
+        <if test="yearTo != null">AND year &lt;= #{yearTo}</if>
+        ORDER BY paper_id LIMIT #{limit}
+    </select>
+    <select id="sourceExists" resultType="boolean">
+        SELECT EXISTS(SELECT 1 FROM ${schema}.sources WHERE id = #{sourceId})
+    </select>
+    <insert id="add">
+        INSERT INTO v2_paper (paper_id, legacy, source_id, publication_year, title, authors, doi,
+                              landing_url, provider, original_name, original_path, original_type, original_size, file_revision)
+        VALUES (#{id}, false, #{data.sourceId}, #{data.year}, #{data.title}, #{data.authors}, #{data.doi},
+                #{data.url}, #{data.provider}, #{file.name}, #{file.path}, #{file.type}, #{file.size}, 1)
+        ON CONFLICT (paper_id) DO NOTHING
+    </insert>
+    <insert id="registerLegacy">
+        INSERT INTO v2_paper (paper_id, legacy, source_id, publication_year, title, authors, doi,
+                              landing_url, provider, original_name, original_path, original_type, original_size,
+                              file_revision, archived_at, matched_work_id, created_at, updated_at)
+        SELECT f.file_id, true, f.source_id, f.year, f.paper_title, f.authors, f.doi, f.url, f.provider,
+               f.original_file_name, f.original_file_path, upper(f.original_file_type), f.file_size, 0,
+               f.deleted_at, j.matched_work_id, COALESCE(f.created_at, now()), COALESCE(f.updated_at, f.created_at, now())
+        FROM original_file f LEFT JOIN original_file_job j ON j.file_id = f.file_id
+        WHERE f.file_id = #{id}
+        ON CONFLICT (paper_id) DO NOTHING
+    </insert>
+    <select id="lock" resultType="int">
+        SELECT 1 FROM v2_paper WHERE paper_id = #{id} FOR UPDATE
+    </select>
+    <update id="edit">
+        UPDATE v2_paper SET source_id = #{data.sourceId}, publication_year = #{data.year},
+             title = #{data.title}, authors = #{data.authors}, doi = #{data.doi}, landing_url = #{data.url},
+             provider = #{data.provider}, record_version = record_version + 1, updated_at = now()
+        WHERE paper_id = #{id}
+    </update>
+    <update id="archive">
+        UPDATE v2_paper SET archived_at = CASE WHEN #{archived} THEN now() ELSE NULL END,
+                            record_version = record_version + 1, updated_at = now()
+        WHERE paper_id = #{id}
+    </update>
+    <update id="replace">
+        UPDATE v2_paper SET original_name = #{file.name}, original_path = #{file.path},
+             original_type = #{file.type}, original_size = #{file.size}, file_revision = file_revision + 1,
+             latest_parse_id = NULL, published_parse_id = NULL, record_version = record_version + 1, updated_at = now()
+        WHERE paper_id = #{id}
+    </update>
+</mapper>

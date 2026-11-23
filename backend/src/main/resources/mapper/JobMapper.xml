@@ -1,0 +1,104 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.paperflow.adapters.persistence.JobMapper">
+    <sql id="summary">
+        SELECT j.job_id, j.kind, j.username, j.retry_of, j.created_at, j.confirmed_at, j.scope::text AS scope,
+            i.total, i.ready, i.queued, i.running, i.succeeded, i.skipped, i.failed,
+            CASE WHEN i.running &gt; 0 OR (i.queued &gt; 0 AND i.succeeded + i.failed + i.skipped &gt; 0 AND i.ready = 0
+                                AND (j.kind != 'ORIGINAL_IMPORT' OR j.confirmed_at IS NOT NULL)) THEN 'RUNNING'
+                 WHEN i.queued &gt; 0 THEN 'QUEUED'
+                 WHEN i.ready &gt; 0 THEN 'READY'
+                 WHEN i.failed &gt; 0 AND i.succeeded &gt; 0 THEN 'PARTIAL'
+                 WHEN i.failed &gt; 0 THEN 'FAILED'
+                 ELSE 'SUCCEEDED' END AS state,
+            CASE WHEN i.queued + i.running + i.ready = 0 THEN i.finished_at END AS finished_at
+        FROM v2_job j
+        CROSS JOIN LATERAL (
+            SELECT count(*)::int AS total, max(x.finished_at) AS finished_at,
+                (count(*) FILTER (WHERE x.state = 'READY'))::int AS ready,
+                (count(*) FILTER (WHERE x.state = 'QUEUED'))::int AS queued,
+                (count(*) FILTER (WHERE x.state = 'RUNNING'))::int AS running,
+                (count(*) FILTER (WHERE x.state = 'SUCCEEDED'))::int AS succeeded,
+                (count(*) FILTER (WHERE x.state = 'SKIPPED'))::int AS skipped,
+                (count(*) FILTER (WHERE x.state = 'FAILED'))::int AS failed
+            FROM v2_job_item x WHERE x.job_id = j.job_id
+        ) i
+    </sql>
+    <sql id="filters">
+        WHERE true
+        <if test="kind != null">AND kind = #{kind}</if>
+        <if test="state != null and state != ''">AND state = #{state}</if>
+    </sql>
+    <sql id="itemFields">
+        job_id, kind, sequence, target, paper_id, file_revision, record_version,
+        input::text AS input, state, message, result::text AS result
+    </sql>
+    <insert id="create">
+        INSERT INTO v2_job (job_id, kind, username, scope, retry_of)
+        VALUES (CAST(#{id} AS uuid), #{kind}, #{username}, CAST(#{scope} AS jsonb), CAST(#{retryOf} AS uuid))
+    </insert>
+    <insert id="addItems">
+        INSERT INTO v2_job_item (job_id, kind, sequence, target, paper_id, file_revision, record_version, input, state, message, result, finished_at)
+        VALUES <foreach collection="items" item="i" separator=",">
+            (CAST(#{i.jobId} AS uuid), #{i.kind}, #{i.sequence}, #{i.target}, #{i.paperId}, #{i.fileRevision},
+             #{i.recordVersion}, CAST(#{i.input} AS jsonb), #{i.state}, #{i.message}, CAST(#{i.result} AS jsonb),
+             CASE WHEN #{i.state} IN ('SKIPPED', 'FAILED') THEN now() END)
+        </foreach>
+    </insert>
+    <select id="get" resultType="com.paperflow.job.JobSummary">
+        <include refid="summary"/> WHERE j.job_id = CAST(#{id} AS uuid)
+    </select>
+    <select id="list" resultType="com.paperflow.job.JobSummary">
+        SELECT * FROM (<include refid="summary"/>) j <include refid="filters"/>
+        ORDER BY created_at DESC, job_id DESC LIMIT #{size} OFFSET #{offset}
+    </select>
+    <select id="count" resultType="long">
+        SELECT count(*) FROM (<include refid="summary"/>) j <include refid="filters"/>
+    </select>
+    <select id="items" resultType="com.paperflow.job.JobItem">
+        SELECT <include refid="itemFields"/> FROM v2_job_item WHERE job_id = CAST(#{id} AS uuid)
+        ORDER BY sequence LIMIT #{size} OFFSET #{offset}
+    </select>
+    <update id="confirm">
+        UPDATE v2_job SET confirmed_at = now() WHERE job_id = CAST(#{id} AS uuid) AND confirmed_at IS NULL
+    </update>
+    <update id="queueReady">
+        UPDATE v2_job_item SET state = 'QUEUED' WHERE job_id = CAST(#{id} AS uuid) AND state = 'READY'
+    </update>
+    <insert id="retryFailed">
+        INSERT INTO v2_job_item (job_id, kind, sequence, target, paper_id, file_revision, record_version, input, state, result)
+        SELECT CAST(#{id} AS uuid), kind, sequence, target, paper_id, file_revision, record_version, input, 'QUEUED',
+               CASE WHEN kind = 'PARSE' THEN result END
+        FROM v2_job_item WHERE job_id = CAST(#{previous} AS uuid) AND state = 'FAILED'
+        AND (kind != 'ORIGINAL_IMPORT' OR input != '{}'::jsonb)
+    </insert>
+    <select id="claim" resultType="com.paperflow.job.JobItem" affectData="true" flushCache="true">
+        WITH chosen AS (
+            SELECT i.job_id, i.sequence FROM v2_job_item i JOIN v2_job j USING (job_id)
+            WHERE i.state = 'QUEUED'
+            ORDER BY j.created_at, i.sequence, i.job_id LIMIT 1 FOR UPDATE OF i SKIP LOCKED
+        ), claimed AS (
+            UPDATE v2_job_item i SET state = 'RUNNING', claim_until = now() + #{seconds} * interval '1 second'
+            FROM chosen c WHERE i.job_id = c.job_id AND i.sequence = c.sequence
+            RETURNING i.*
+        ) SELECT <include refid="itemFields"/> FROM claimed
+    </select>
+    <update id="expireClaims">
+        UPDATE v2_job_item SET state = 'FAILED', claim_until = NULL, finished_at = now(), message = '任务执行中断，可重试'
+        WHERE state = 'RUNNING' AND claim_until &lt; now()
+    </update>
+    <select id="claimActive" resultType="boolean">
+        SELECT EXISTS(SELECT 1 FROM v2_job_item WHERE job_id = CAST(#{id} AS uuid) AND sequence = #{sequence}
+            AND state = 'RUNNING' AND claim_until &gt; now())
+    </select>
+    <update id="checkpoint">
+        UPDATE v2_job_item SET result = CAST(#{result} AS jsonb)
+        WHERE job_id = CAST(#{id} AS uuid) AND sequence = #{sequence}
+              AND state = 'RUNNING' AND claim_until &gt; now()
+    </update>
+    <update id="finish">
+        UPDATE v2_job_item SET state = #{state}, claim_until = NULL, finished_at = now(),
+            message = #{message}, result = COALESCE(CAST(#{result} AS jsonb), CASE WHEN kind = 'PARSE' THEN result END)
+        WHERE job_id = CAST(#{id} AS uuid) AND sequence = #{sequence} AND state = 'RUNNING'
+    </update>
+</mapper>

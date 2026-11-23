@@ -1,0 +1,8 @@
+.env
+.env.local
+frontend/node_modules/
+frontend/dist/
+backend/target/
+var/
+playwright-report/
+test-results/

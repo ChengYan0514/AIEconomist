@@ -1,0 +1,60 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.paperflow.adapters.persistence.OpenAlexMapper">
+    <select id="sources" resultType="com.paperflow.openalex.Source">
+        SELECT id AS source_id, COALESCE(display_name, id) AS name
+        FROM ${schema}.sources
+        <if test="q != ''">WHERE upper(id) = upper(#{q}) OR strpos(lower(display_name), lower(#{q})) > 0</if>
+        ORDER BY (upper(id) = upper(#{q})) DESC, display_name NULLS LAST, id LIMIT 25
+    </select>
+    <select id="snapshotWorks" resultType="com.paperflow.openalex.Work">
+        WITH selected AS (
+            SELECT DISTINCT w.id, w.publication_year, w.title, w.doi
+            FROM ${schema}.works_locations loc JOIN ${schema}.works w ON w.id = loc.work_id
+            WHERE loc.source_id = #{sourceId} AND loc.work_id &gt; #{after}
+            <if test="yearFrom != null">AND w.publication_year &gt;= #{yearFrom}</if>
+            <if test="yearTo != null">AND w.publication_year &lt;= #{yearTo}</if>
+            ORDER BY w.id LIMIT 500
+        )
+        SELECT s.id AS work_id, s.publication_year AS year, s.title, s.doi,
+               COALESCE((
+                 SELECT string_agg(a.display_name, ';' ORDER BY a.id)
+                 FROM ${schema}.works_authorships wa JOIN ${schema}.authors a ON a.id = wa.author_id
+                 WHERE wa.work_id = s.id
+               ), '') AS authors
+        FROM selected s ORDER BY s.id
+    </select>
+    <insert id="save">
+        INSERT INTO v2_openalex_work (source_id, work_id, year, title, doi, authors)
+        VALUES <foreach collection="works" item="w" separator=",">
+            (#{sourceId}, #{w.workId}, #{w.year}, #{w.title}, #{w.doi}, #{w.authors})
+        </foreach>
+        ON CONFLICT (source_id, work_id) DO UPDATE SET year = EXCLUDED.year, title = EXCLUDED.title,
+            doi = EXCLUDED.doi, authors = EXCLUDED.authors, imported_at = now()
+    </insert>
+    <sql id="legacyProjection">
+        SELECT w.work_id, w.publication_year AS year, w.title, w.doi,
+            COALESCE((SELECT string_agg(wa.author_name, ';' ORDER BY wa.author_id)
+                      FROM work_author wa WHERE wa.work_id = w.work_id), '') AS authors
+        FROM work_source ws JOIN work w ON w.work_id = ws.work_id
+        WHERE ws.source_id = #{sourceId}
+        AND NOT EXISTS (SELECT 1 FROM v2_openalex_work v WHERE v.source_id = ws.source_id AND v.work_id = w.work_id)
+    </sql>
+    <select id="byDoi" resultType="com.paperflow.openalex.Work">
+        SELECT work_id, year, title, doi, authors FROM v2_openalex_work WHERE source_id = #{sourceId} AND doi = #{doi}
+        UNION ALL
+        <include refid="legacyProjection"/> AND w.doi = #{doi} ORDER BY work_id
+    </select>
+    <select id="byYear" resultType="com.paperflow.openalex.Work">
+        SELECT work_id, year, title, doi, authors FROM v2_openalex_work WHERE source_id = #{sourceId} AND year = #{year}
+        UNION ALL
+        <include refid="legacyProjection"/> AND w.publication_year = #{year} ORDER BY work_id
+    </select>
+    <select id="boundLegacyPaper" resultType="string">
+        SELECT file_id FROM original_file_job WHERE matched_work_id = #{workId} LIMIT 1
+    </select>
+    <update id="bind">
+        UPDATE v2_paper SET matched_work_id = #{workId}, record_version = record_version + 1, updated_at = now()
+        WHERE paper_id = #{paperId}
+    </update>
+</mapper>
