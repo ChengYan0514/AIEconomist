@@ -270,6 +270,9 @@ a.overview-count:hover { border-color: var(--accent); background: var(--accent-l
 .job-overview > div > span:first-child { display: block; font-size: .85rem; color: var(--muted); margin-bottom: 8px; }
 .job-overview strong { font-size: .9rem; }
 .result-cell { min-width: 180px; max-width: 580px; overflow-wrap: anywhere; }
+.zip-result-table { min-width: 660px; }
+.zip-result-table .title-cell { width: auto; min-width: 165px; }
+.zip-entry { min-width: 145px; max-width: 30ch; overflow-wrap: anywhere; }
 .candidate-picker { display: grid; gap: 7px; margin-top: 8px; }
 .source-search { display: flex; gap: 9px; padding: 13px 17px; border-bottom: 1px solid var(--line); }
 .source-search .search-box { flex: 1; }

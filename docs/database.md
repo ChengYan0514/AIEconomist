@@ -154,6 +154,8 @@
 
 部分唯一索引限制同一 `(kind, paper_id)` 在 `QUEUED` 和 `RUNNING` 中最多有一项，条件限定非空论文 ID 且类型排除 `ORIGINAL_IMPORT`。另有待领取项 `(job_id, sequence)`、执行中项 `claim_until` 和失败解析或全文导入项 `(paper_id, file_revision, kind)` 三个部分索引。 [任务查询与写入](../backend/src/main/resources/mapper/JobMapper.xml) · [任务提交与重试](../backend/src/main/java/com/paperflow/job/JobService.java) · [Worker](../backend/src/main/java/com/paperflow/job/JobWorker.java)
 
+ZIP 预检通过项从固定的 `input.entry` 读取预检时的原件路径。预检跳过和失败项继续使用 `input = '{}'`，并在终态 `result.preflightPath` 记录包内路径。接口在 `preflight` 中提供该路径，原有公开 `result` 保持其结构。旧任务如未记录路径则返回空值。
+
 ## `v2_paper_read` 与版本语义
 
 视图供论文详情、分页、条件筛选、导出及按范围选取任务目标使用。相同论文 ID 优先取 `v2_paper`。余下历史论文从 `original_file` 取得书目和文件字段，并连接 `original_file_job`。两部分都通过 `source.source_id` 取 `source_name`，本地缺少来源行时名称为空。历史未登记行的 `revision` 和 `version` 为 `0`，解析与发布指针为空，更新时间取 `updated_at`、`created_at` 中首个非空值。新版行将 `file_revision`、`record_version` 投影为 `revision`、`version`，并从 `archived_at` 推导 `archived`。 [读取视图](../backend/src/main/resources/db/migration/V1__paperflow_v2.sql) · [论文查询](../backend/src/main/resources/mapper/PaperMapper.xml)

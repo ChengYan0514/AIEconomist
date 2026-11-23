@@ -118,7 +118,9 @@ source_id,year,paper_title,authors,file_path
 S123,2024,Example paper,Alice;Bob,files/paper.pdf
 ```
 
-用实际的出版来源 ID 替换示例中的 `S123`。上传后先查看 `GET /api/jobs/{jobId}/items`。`READY` 可确认导入，`SKIPPED` 表示重复，`FAILED` 的 `message` 给出问题。若无 `READY` 项，确认返回 `409`。确认后查询同一任务 UUID，重复确认会返回同一任务的当前摘要。预检失败的行需要修正后重新上传，执行阶段失败的行可在任务结束后重试。
+用实际的出版来源 ID 替换示例中的 `S123`。上传响应的 `ready` 给出全批通过条数。`GET /api/jobs/{jobId}/items` 的 `sequence` 从 1 开始，表示不含表头的 CSV 数据记录位序。`preflight` 返回通过（`IMPORTABLE`）、重复（`DUPLICATE`）或有问题（`ERROR`）的分类，以及包内路径 `originalPath`、原因 `reason` 和重复的既有论文 ID `existingPaperId`。旧任务未保存的路径返回 `null`。
+
+仅有 `READY` 项会进入队列，执行时复核重复。若无 `READY` 项，确认返回 `409`。确认后查询同一任务 UUID，重复确认会返回同一任务的当前摘要。任务项的 `state`、`message` 和 `result` 反映当前结果，仍可通过 `preflight` 查阅预检。预检失败的行需要修正后重新上传，执行阶段失败的行可在任务结束后重试。
 
 ## 任务查询和处理
 

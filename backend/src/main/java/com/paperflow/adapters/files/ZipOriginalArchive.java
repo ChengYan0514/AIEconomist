@@ -122,17 +122,17 @@ public final class ZipOriginalArchive implements OriginalArchive {
 
     private Row row(ZipFile zip, int number, CSVRecord row) {
         String title = value(row, "paper_title");
+        String path = value(row, "file_path");
         try {
             var data = new PaperMetadata(value(row, "source_id"), Integer.parseInt(value(row, "year")), title,
                     value(row, "authors"), value(row, "doi"), value(row, "url"), value(row, "provider"));
-            String path = value(row, "file_path");
             String type = entryType(zip, path);
             return new Row(number, title, path, type, data, null);
         } catch (NumberFormatException error) {
-            return new Row(number, title, null, null, null, "发表年份应为四位数字");
+            return new Row(number, title, path, null, null, "发表年份应为四位数字");
         } catch (IllegalArgumentException | IOException error) {
             String message = error instanceof IOException ? "包内文件无法读取" : error.getMessage();
-            return new Row(number, title, null, null, null, message);
+            return new Row(number, title, path, null, null, message);
         }
     }
 

@@ -7,11 +7,13 @@ import com.paperflow.paper.model.PaperConflict;
 import java.io.IOException;
 import java.io.InputStream;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.HashSet;
-import java.util.Map;
 import java.util.UUID;
 
 public final class OriginalImports {
+    public static final String PREFLIGHT_PATH = "preflightPath";
+
     private final OriginalArchive archive;
     private final JobService jobs;
     private final JobJson json;
@@ -66,7 +68,14 @@ public final class OriginalImports {
 
     private JobItem row(UUID id, OriginalArchive.Row row, String title, String paperId, String input,
                         String state, String message, String existing) {
+        var result = new HashMap<String, String>();
+        if (existing != null) result.put("paperId", existing);
+        String path = row.file();
+        if ("{}".equals(input) && path != null && !path.isBlank()) {
+            // PostgreSQL JSONB cannot store NUL. Keep invalid paths readable in the review.
+            result.put(PREFLIGHT_PATH, path.replace("\0", "\\0"));
+        }
         return new JobItem(id, JobKind.ORIGINAL_IMPORT, row.sequence(), title, paperId, null, null, input, state,
-                message, existing == null ? null : json.write(Map.of("paperId", existing)));
+                message, result.isEmpty() ? null : json.write(result));
     }
 }

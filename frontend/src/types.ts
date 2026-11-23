@@ -85,4 +85,12 @@ export interface JobItem {
   inputError: boolean
   message: string | null
   result: { candidates?: Work[]; matched?: boolean; imported?: number; paperId?: string } | null
+  preflight: OriginalPreflight | null
+}
+
+export interface OriginalPreflight {
+  status: "IMPORTABLE" | "DUPLICATE" | "ERROR"
+  originalPath: string | null
+  reason: string | null
+  existingPaperId: string | null
 }
