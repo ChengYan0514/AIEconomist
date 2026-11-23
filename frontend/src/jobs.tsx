@@ -6,11 +6,14 @@ import { Button } from "./components/ui/button"
 import { SectionHeader } from "./components/workspace"
 import { ArchiveUpload, ProcessPapers } from "./papers/forms"
 import { usePermissions } from "./permissions"
-import type { Job, JobItem, JobItemState, JobKind, JobState, Page, Paper } from "./types"
+import type { Job, JobItem, JobItemState, JobKind, JobState, OriginalPreflight, Page, Paper } from "./types"
 
 const size = 20
 const states: JobState[] = ["READY", "QUEUED", "RUNNING", "SUCCEEDED", "PARTIAL", "FAILED"]
 const itemStates: JobItemState[] = ["READY", "QUEUED", "RUNNING", "SUCCEEDED", "SKIPPED", "FAILED"]
+const preflightLabels: Record<OriginalPreflight["status"], [string, string]> = {
+  IMPORTABLE: ["可导入", "green"], DUPLICATE: ["重复", "amber"], ERROR: ["有问题", "red"],
+}
 
 export function Jobs() {
   const { canJob, canProcess } = usePermissions()
@@ -70,13 +73,20 @@ export function JobDetail({ id }: { id: string }) {
   const pendingItems = itemPage?.items.some((item) => item.state === "QUEUED" || item.state === "RUNNING")
   useRefresh(Boolean((job && active(job)) || pendingItems), overview.reload, details.reload)
   if (!job) return overview.error ? <Notice error>{overview.error.message}</Notice> : <Loading />
+  const zipImport = job.kind === "ORIGINAL_IMPORT"
+  const reviewing = zipImport && !job.confirmedAt
 
   async function action(type: "confirm" | "retry") {
     setBusy(true); setError("")
     try {
       const response = await api<Job>(type === "confirm" ? "/imports/" + id + "/confirm" : path + "/retry", { method: "POST" })
       if (type === "retry") window.location.assign(jobPath(response.jobId))
-      else { overview.reload(); details.reload() }
+      else {
+        setPage(0)
+        setState("")
+        overview.reload()
+        details.reload()
+      }
     } catch (reason) { setError(errorMessage(reason)) }
     finally { setBusy(false) }
   }
@@ -87,7 +97,7 @@ export function JobDetail({ id }: { id: string }) {
       {job.retryOf && <a href={jobPath(job.retryOf)} className="back-link">查看原任务</a>}
     </div>}
       description={job.scope?.filename || job.scope?.sourceId || "所选论文"} actions={<>
-        {canJob("ORIGINAL_IMPORT") && job.state === "READY" && <Button disabled={busy} onClick={() => action("confirm")}>确认导入 {job.ready} 条</Button>}
+        {reviewing && job.ready > 0 && canJob("ORIGINAL_IMPORT") && <Button disabled={busy} onClick={() => action("confirm")}>确认导入 {job.ready} 条</Button>}
         {canJob(job.kind) && job.canRetry &&
           <Button disabled={busy} variant="outline" onClick={() => action("retry")}><RotateCcw size={16} />重试失败项</Button>}
       </>} />
@@ -95,10 +105,11 @@ export function JobDetail({ id }: { id: string }) {
     <div className="panel job-overview">
       <div><span>当前状态</span><JobChip status={job.state} /></div>
       <div><span>处理进度</span><Progress job={job} /></div>
-      <div><span>结果</span><strong>{job.ready > 0 ? job.ready + " 条待确认 · " : ""}{job.succeeded} 成功 · {job.skipped} 跳过 · {job.failed} 失败</strong></div>
+      {reviewing ? <div><span>预检结果</span><strong>{job.ready} 条可导入 · {job.skipped} 条重复 · {job.failed} 条有问题</strong></div>
+        : <div><span>结果</span><strong>{job.succeeded} 成功 · {job.skipped} 跳过 · {job.failed} 失败</strong></div>}
       <div><span>提交时间</span><strong className="inline-flex items-center gap-2"><CalendarDays size={15} />{dateLabel(job.createdAt)}</strong></div>
     </div>
-    {job.state === "READY" && <Notice>请核对预检结果。确认后仅处理通过预检的记录，跳过重复行和有问题的行。</Notice>}
+    {reviewing && job.ready > 0 && <Notice>确认后仅处理通过预检的记录。</Notice>}
     <section className="panel mt-4">
       <div className="panel-bar">
         <div className="panel-title"><ClipboardList size={19} /><strong>逐项结果</strong></div>
@@ -110,24 +121,49 @@ export function JobDetail({ id }: { id: string }) {
       </div>
       {details.error ? <div className="p-5"><Notice error>{details.error.message}</Notice></div> : !itemPage ? <Loading /> :
         itemPage.items.length === 0 ? <Empty title="没有符合条件的任务项" /> :
-        <div className="table-scroll"><table className="data-table"><thead><tr><th>对象</th><th>状态</th><th>结果</th></tr></thead>
-          <tbody>{itemPage.items.map((item) => <tr key={item.sequence}>
-            <td className="title-cell">{item.paperId && (item.state === "SUCCEEDED" || job.kind !== "ORIGINAL_IMPORT" || item.result?.paperId) ?
-              <a href={paperPath(item.paperId)}>{item.target}</a> : item.target}</td>
-            <td><div className="flex flex-wrap gap-1">
-              <JobChip status={item.state} />
-              {item.result?.candidates && item.result.candidates.length > 1 &&
-                <span className="status-chip status-blue"><span className="status-dot" />待确认匹配</span>}
-            </div></td>
-            <td className="result-cell"><span>{item.message || "—"}</span>
-              {item.inputError && <small className="block mt-1">修正输入后重新上传 ZIP</small>}
-              {canJob("PUBLISH") && job.kind === "PARSE" && item.state === "SUCCEEDED" && item.paperId && <PublishParsed paperId={item.paperId} />}
-              {canJob("MATCH") && can("PAPER_READ") && item.result?.candidates && item.result.candidates.length > 1 && item.paperId && <CandidatePicker item={item} />}
-            </td>
-          </tr>)}</tbody>
+        <div className="table-scroll" tabIndex={0} role="region" aria-label={zipImport ? "ZIP 逐项结果" : "任务逐项结果"}>
+          <table className={zipImport ? "data-table zip-result-table" : "data-table"}><thead><tr>
+            {zipImport && <th scope="col">CSV 数据记录位序</th>}
+            <th scope="col">对象</th>
+            {zipImport && <><th scope="col">包内原件</th><th scope="col">预检结论</th></>}
+            {!reviewing && <><th scope="col">状态</th><th scope="col">结果</th></>}
+          </tr></thead>
+          <tbody>{itemPage.items.map((item) => {
+            const importedPaper = item.result?.paperId ?? (item.state === "SUCCEEDED" ? item.paperId : null)
+            const linkedPaper = zipImport ? can("PAPER_READ") && (item.preflight?.existingPaperId ?? importedPaper) : item.paperId
+            return <tr key={item.sequence}>
+              {zipImport && <td>{item.sequence}</td>}
+              <td className="title-cell">{linkedPaper ? <a href={paperPath(linkedPaper)}>{item.target}</a> : item.target}</td>
+              {zipImport && <>
+                <td className="zip-entry">{item.preflight?.originalPath ?? "未记录"}</td>
+                <td className="result-cell"><PreflightResult item={item} /></td>
+              </>}
+              {!reviewing && <>
+                <td><div className="flex flex-wrap gap-1">
+                  <JobChip status={item.state} />
+                  {item.result?.candidates && item.result.candidates.length > 1 &&
+                    <span className="status-chip status-blue"><span className="status-dot" />待确认匹配</span>}
+                </div></td>
+                <td className="result-cell"><span>{(item.message !== item.preflight?.reason && item.message) || "—"}</span>
+                  {canJob("PUBLISH") && job.kind === "PARSE" && item.state === "SUCCEEDED" && item.paperId && <PublishParsed paperId={item.paperId} />}
+                  {canJob("MATCH") && can("PAPER_READ") && item.result?.candidates && item.result.candidates.length > 1 && item.paperId && <CandidatePicker item={item} />}
+                </td>
+              </>}
+            </tr>
+          })}</tbody>
         </table></div>}
       {itemPage && <Pagination total={itemPage.total} page={page} size={size} change={setPage} />}
     </section>
+  </>
+}
+
+function PreflightResult({ item }: { item: JobItem }) {
+  if (!item.preflight) return <>—</>
+  const [label, color] = preflightLabels[item.preflight.status]
+  return <>
+    <span className={"status-chip status-" + color}><span className="status-dot" />{label}</span>
+    {item.preflight.reason && <div className="mt-1">{item.preflight.reason}</div>}
+    {item.inputError && <small className="block mt-1">修正输入后重新上传 ZIP</small>}
   </>
 }
 

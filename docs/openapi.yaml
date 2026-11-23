@@ -488,6 +488,7 @@ paths:
     parameters: [{$ref: '#/components/parameters/JobId'}]
     post:
       operationId: confirmOriginals
+      description: 将通过预检的任务项加入队列，执行时复核重复。重复确认返回同一任务的当前摘要。
       responses:
         '202': {$ref: '#/components/responses/Job'}
         '400': {$ref: '#/components/responses/Error'}
@@ -812,12 +813,25 @@ components:
         scope: {type: object, description: 来源范围、所选论文数量 selectedCount，或 ZIP 文件名 filename}
     JobItem:
       type: object
-      required: [sequence, target, paperId, state, inputError, message, result]
+      required: [sequence, target, paperId, state, inputError, message, result, preflight]
       properties:
-        sequence: {type: integer}
+        sequence: {type: integer, description: ZIP 导入时为从 1 开始的 CSV 数据记录位序，不含表头。}
         target: {type: string}
         paperId: {type: [string, 'null']}
         state: {$ref: '#/components/schemas/JobItemState'}
         inputError: {type: boolean, description: 此项在 ZIP 预检阶段失败，需要修正后重新上传。}
         message: {type: [string, 'null']}
         result: {type: [object, 'null']}
+        preflight:
+          oneOf:
+            - $ref: '#/components/schemas/OriginalPreflight'
+            - type: 'null'
+          description: ZIP 行的预检结果，执行后仍可读取。其他任务返回 null。
+    OriginalPreflight:
+      type: object
+      required: [status, originalPath, reason, existingPaperId]
+      properties:
+        status: {type: string, enum: [IMPORTABLE, DUPLICATE, ERROR]}
+        originalPath: {type: [string, 'null'], description: CSV 中的包内原件路径。未填写路径或旧任务未记录路径时为空。}
+        reason: {type: [string, 'null'], description: 预检发现重复或问题的原因。}
+        existingPaperId: {type: [string, 'null'], description: 预检发现已登记的重复论文时返回其实际 ID。}
