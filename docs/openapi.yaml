@@ -434,6 +434,7 @@ paths:
     parameters: [{$ref: '#/components/parameters/PaperId'}]
     post:
       operationId: confirmMatch
+      description: 使用打开候选复核时读取的论文版本确认关联。服务端重新校验论文版本、当前候选与作品唯一性。
       requestBody:
         required: true
         content:
@@ -447,8 +448,11 @@ paths:
       responses:
         '200': {$ref: '#/components/responses/Paper'}
         '400': {$ref: '#/components/responses/Error'}
+        '403': {$ref: '#/components/responses/Error'}
         '404': {$ref: '#/components/responses/Error'}
-        '409': {$ref: '#/components/responses/Error'}
+        '409':
+          $ref: '#/components/responses/Error'
+          description: 论文版本或归档状态已变化，候选已变化，或作品已有论文关联。
   /sources:
     get:
       operationId: searchSources
@@ -821,12 +825,35 @@ components:
         state: {$ref: '#/components/schemas/JobItemState'}
         inputError: {type: boolean, description: 此项在 ZIP 预检阶段失败，需要修正后重新上传。}
         message: {type: [string, 'null']}
-        result: {type: [object, 'null']}
+        result:
+          type: [object, 'null']
+          description: 随任务类型变化。匹配任务保存执行时的候选书目和出版来源。
+          properties:
+            candidates:
+              type: array
+              items: {$ref: '#/components/schemas/MatchCandidate'}
+            matched: {type: boolean}
+            candidateSource:
+              type: [object, 'null']
+              description: 候选的出版来源。无候选时为空，旧匹配结果可以省略此字段。
+              required: [sourceId, name]
+              properties:
+                sourceId: {type: string}
+                name: {type: [string, 'null']}
         preflight:
           oneOf:
             - $ref: '#/components/schemas/OriginalPreflight'
             - type: 'null'
           description: ZIP 行的预检结果，执行后仍可读取。其他任务返回 null。
+    MatchCandidate:
+      type: object
+      required: [workId, year, title, doi, authors]
+      properties:
+        workId: {type: string}
+        year: {type: [integer, 'null']}
+        title: {type: [string, 'null']}
+        doi: {type: [string, 'null']}
+        authors: {type: string}
     OriginalPreflight:
       type: object
       required: [status, originalPath, reason, existingPaperId]

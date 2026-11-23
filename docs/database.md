@@ -198,7 +198,7 @@ ZIP 预检通过项从固定的 `input.entry` 读取预检时的原件路径。�
 
 原件为历史版本的条件是 `legacy = true` 且 `revision = 0`，文件按 `PAPERFLOW_LEGACY_STORAGE`（缺省回退到 `DATA_ROOT` 或 `var/legacy`）读取。已有 `published_parse_id` 时，正文和图片只从它对应的新版内容块读取。指针为空且使用历史原件时，正文回退到旧 `block` 及扩展表。历史正文可以在原件文件缺失时查阅。历史图表路径以 `openalex/` 或 `paperflow/` 开头时直接使用，其余相对路径尝试拼接该论文的解析文件目录。历史论文需要导入旧解析产物时，读取 `text_file` 中的 JSON 路径，在新版登记产物及新内容块，产物文件继续从旧目录读取。新写入原件和新生成解析产物使用 `PAPERFLOW_STORAGE`，默认 `var/paperflow`。 [文件访问](../backend/src/main/java/com/paperflow/adapters/files/FileStorage.java) · [全文服务](../backend/src/main/java/com/paperflow/fulltext/FullTextService.java) · [全文查询](../backend/src/main/resources/mapper/FullTextMapper.xml)
 
-OpenAlex 匹配在同一来源内合并 `v2_openalex_work` 和旧作品候选。相同 `(source_id, work_id)` 优先使用新版元数据。先查 DOI，结果为空时才按年份、规范化标题和作者集合筛选。匹配写入 `v2_paper`，旧绑定检查与新版的唯一索引共同约束已关联的作品。 [OpenAlex 查询](../backend/src/main/resources/mapper/OpenAlexMapper.xml) · [匹配规则](../backend/src/main/java/com/paperflow/openalex/OpenAlexService.java)
+OpenAlex 匹配在同一来源内合并 `v2_openalex_work` 和旧作品候选。相同 `(source_id, work_id)` 优先使用新版元数据。先查 DOI，结果为空时才按年份、规范化标题和作者集合筛选。匹配写入 `v2_paper`，旧绑定检查与新版的唯一索引共同约束已关联的作品。`v2_job_item.result` 保存匹配时的候选作品书目和出版来源，旧 JSON 结果可能缺少来源字段。 [OpenAlex 查询](../backend/src/main/resources/mapper/OpenAlexMapper.xml) · [匹配规则](../backend/src/main/java/com/paperflow/openalex/OpenAlexService.java)
 
 ## OpenAlex 快照读取
 

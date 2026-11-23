@@ -49,17 +49,18 @@ public final class OpenAlexService {
     public MatchResult match(String id, long expectedVersion, Runnable checkClaim) {
         Paper paper = papers.get(id);
         paper.requireActive();
-        if (paper.matchedWorkId() != null) return new MatchResult("已有关联", List.of(), false);
+        if (paper.matchedWorkId() != null) return new MatchResult("已有关联", List.of(), false, null);
         paper.requireCurrent(expectedVersion);
         List<Work> proposals = candidates(paper);
-        if (proposals.isEmpty()) return new MatchResult("未找到匹配的 OpenAlex 作品", proposals, false);
-        if (proposals.size() > 1) return new MatchResult("找到多个候选，请确认关联", proposals, false);
+        if (proposals.isEmpty()) return new MatchResult("未找到匹配的 OpenAlex 作品", proposals, false, null);
+        var source = new Source(paper.sourceId(), paper.sourceName());
+        if (proposals.size() > 1) return new MatchResult("找到多个候选，请确认关联", proposals, false, source);
         try {
             bind(id, expectedVersion, proposals.get(0).workId(), checkClaim);
-            return new MatchResult("匹配成功", proposals, true);
+            return new MatchResult("匹配成功", proposals, true, source);
         } catch (PaperConflict conflict) {
             if (!"WORK_ALREADY_BOUND".equals(conflict.code())) throw conflict;
-            return new MatchResult("候选作品已有论文关联", List.of(), false);
+            return new MatchResult("候选作品已有论文关联", List.of(), false, null);
         }
     }
 
@@ -114,5 +115,5 @@ public final class OpenAlexService {
         return new PaperConflict("WORK_ALREADY_BOUND", "该作品已有论文关联");
     }
 
-    public record MatchResult(String message, List<Work> candidates, boolean matched) {}
+    public record MatchResult(String message, List<Work> candidates, boolean matched, Source candidateSource) {}
 }

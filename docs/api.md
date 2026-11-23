@@ -146,7 +146,7 @@ S123,2024,Example paper,Alice;Bob,files/paper.pdf
 
 任务摘要状态为 `READY`、`QUEUED`、`RUNNING`、`SUCCEEDED`、`FAILED`、`PARTIAL`。`READY` 表示有项目等待确认。`queued + running` 大于零时可继续轮询。终态中，有成功项和失败项时为 `PARTIAL`，有失败项且无成功项时为 `FAILED`，无失败项时为 `SUCCEEDED`，包括全部跳过的情况。
 
-任务项返回 `sequence`、`target`、`paperId`、`state`、`message`、`result` 和 `inputError`。`inputError` 为真时，需修正 ZIP 输入并重新上传。项状态为 `READY`、`QUEUED`、`RUNNING`、`SUCCEEDED`、`SKIPPED`、`FAILED`。`state` 按任务项状态精确筛选，空值返回所有状态，其他非空值返回空列表。任务项的分页总数按筛选结果计算，任务摘要继续统计整个任务。`paperId`、`message`、`result` 可为 `null`。`result` 随类型变化，例如导入原件的 `{paperId}`、OpenAlex 元数据导入的 `{imported}`、匹配的 `{message, candidates, matched}`，以及解析执行时登记的 `{taskId, fileId, uploaded}`。当 `succeeded`、`skipped` 或 `failed` 非零时，可在任务项中进一步判断每个目标的结果。
+任务项返回 `sequence`、`target`、`paperId`、`state`、`message`、`result` 和 `inputError`。`inputError` 为真时，需修正 ZIP 输入并重新上传。项状态为 `READY`、`QUEUED`、`RUNNING`、`SUCCEEDED`、`SKIPPED`、`FAILED`。`state` 按任务项状态精确筛选，空值返回所有状态，其他非空值返回空列表。任务项的分页总数按筛选结果计算，任务摘要继续统计整个任务。`paperId`、`message`、`result` 可为 `null`。`result` 随类型变化，例如导入原件的 `{paperId}`、OpenAlex 元数据导入的 `{imported}`、匹配的 `{message, candidates, matched, candidateSource}`，以及解析执行时登记的 `{taskId, fileId, uploaded}`。当 `succeeded`、`skipped` 或 `failed` 非零时，可在任务项中进一步判断每个目标的结果。
 
 ## OpenAlex 出版来源和匹配
 
@@ -157,7 +157,9 @@ S123,2024,Example paper,Alice;Bob,files/paper.pdf
 
 来源搜索按 ID 精确匹配或按名称查找子串，忽略大小写。指定实际来源后提交 `METADATA` 可扩充该来源下的本地作品数据。`MATCH` 在同一来源内先查 DOI，无 DOI 候选时再按年份、规范化标题和作者集合查找。同一作品的候选对象包含 `workId`、`year`、`title`、`doi`、`authors`。
 
-唯一候选可自动关联，多候选项会以 `SKIPPED` 返回，`result.candidates` 列出可选作品，`result.matched` 为 `false`。手动确认前重新读取论文取得当前 `version`，再用候选的 `workId` 提交确认。服务端按当前论文复核候选。成功后可从论文的 `matchedWorkId` 核对结果。
+唯一候选可自动关联。多候选项以 `SKIPPED` 返回，`result.candidates` 保留本次匹配的候选书目，`result.matched` 为 `false`。`result.candidateSource` 保存匹配时的 `{sourceId, name}`，名称可能为空。旧结果可能缺少该字段，界面显示已记录的任务范围来源或提示来源缺失。
+
+打开候选复核时读取当前论文和 `version`，确认提交该版本与所选 `workId`。服务端复核版本、当前候选及作品唯一性。成功响应的 `matchedWorkId` 为实际关联作品。若确认遇到冲突，可读取论文核对是否已有实际关联。未关联时，`PAPER_CHANGED` 需要刷新并核对当前论文，`CANDIDATE_MISSING` 需要重新匹配，`WORK_ALREADY_BOUND` 可尝试其他候选。
 
 ## 用户管理
 

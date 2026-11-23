@@ -2,9 +2,11 @@ import { useCallback, useEffect, useState } from "react"
 
 export class ApiError extends Error {
   status: number
-  constructor(status: number, message: string) {
+  code?: string
+  constructor(status: number, message: string, code?: string) {
     super(message)
     this.status = status
+    this.code = code
   }
 }
 
@@ -26,7 +28,7 @@ export async function api<T>(path: string, init: RequestInit = {}): Promise<T> {
       window.dispatchEvent(new Event("sessionchange"))
     }
     const error = await response.json().catch(() => null)
-    throw new ApiError(response.status, error?.message || "请求暂时失败，请稍后重试。")
+    throw new ApiError(response.status, error?.message || "请求暂时失败，请稍后重试。", error?.code)
   }
   return response.status === 204 ? undefined as T : response.json()
 }
