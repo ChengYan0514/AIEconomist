@@ -129,8 +129,8 @@ export function JobDetail({ id }: { id: string }) {
             {!reviewing && <><th scope="col">状态</th><th scope="col">结果</th></>}
           </tr></thead>
           <tbody>{itemPage.items.map((item) => {
-            const importedPaper = item.result?.paperId ?? (item.state === "SUCCEEDED" ? item.paperId : null)
-            const linkedPaper = zipImport ? can("PAPER_READ") && (item.preflight?.existingPaperId ?? importedPaper) : item.paperId
+            const importedPaper = item.state === "SUCCEEDED" ? item.result?.paperId ?? item.paperId : null
+            const linkedPaper = can("PAPER_READ") && (zipImport ? item.preflight?.existingPaperId ?? importedPaper : item.paperId)
             return <tr key={item.sequence}>
               {zipImport && <td>{item.sequence}</td>}
               <td className="title-cell">{linkedPaper ? <a href={paperPath(linkedPaper)}>{item.target}</a> : item.target}</td>

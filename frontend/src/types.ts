@@ -88,6 +88,15 @@ export interface JobItem {
   preflight: OriginalPreflight | null
 }
 
+export interface PaperJobRecord {
+  jobId: string
+  sequence: number
+  kind: JobKind
+  state: JobItemState
+  message: string | null
+  createdAt: string
+}
+
 export interface OriginalPreflight {
   status: "IMPORTABLE" | "DUPLICATE" | "ERROR"
   originalPath: string | null

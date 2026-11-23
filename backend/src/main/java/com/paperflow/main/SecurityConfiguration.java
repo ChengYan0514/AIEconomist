@@ -120,6 +120,8 @@ class SecurityConfiguration {
                 .requestMatchers(HEAD, "/api/papers/export").access(csvAccess)
                 .requestMatchers(GET, contentPaths).access(access.require(CONTENT_READ, PAPER_READ))
                 .requestMatchers(HEAD, contentPaths).access(access.require(CONTENT_READ, PAPER_READ))
+                .requestMatchers(GET, "/api/papers/{paperId}/jobs").access(access.require(PAPER_READ, JOB_READ))
+                .requestMatchers(HEAD, "/api/papers/{paperId}/jobs").access(access.require(PAPER_READ, JOB_READ))
                 .requestMatchers(GET, paperPaths).access(access.require(PAPER_READ))
                 .requestMatchers(HEAD, paperPaths).access(access.require(PAPER_READ))
                 .requestMatchers(POST, "/api/papers/{paperId}/match").access(access.require(OPENALEX_MANAGE, PAPER_READ, JOB_READ))

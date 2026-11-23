@@ -167,6 +167,8 @@
 
 ZIP 预检通过项从固定的 `input.entry` 读取预检时的原件路径。预检跳过和失败项继续使用 `input = '{}'`，并在终态 `result.preflightPath` 记录包内路径。接口在 `preflight` 中提供该路径，原有公开 `result` 保持其结构。旧任务如未记录路径则返回空值。
 
+`V5` 增加 `paper_id` 非空项的索引，供论文处理记录精确查询。ZIP 行只有成功登记后，或预检结果的 `result.paperId` 指向已登记论文时，才纳入对应的处理记录。 [处理记录索引](../backend/src/main/resources/db/migration/V5__paper_job_history.sql)
+
 ## `v2_paper_read` 与版本语义
 
 视图供论文详情、分页、条件筛选、导出及按范围选取任务目标使用。相同论文 ID 优先取 `v2_paper`。余下历史论文从 `original_file` 取得书目和文件字段，并连接 `original_file_job`。两部分都通过 `source.source_id` 取 `source_name`，本地缺少来源行时名称为空。历史未登记行的 `revision` 和 `version` 为 `0`，解析与发布指针为空，更新时间取 `updated_at`、`created_at` 中首个非空值。新版行将 `file_revision`、`record_version` 投影为 `revision`、`version`，并从 `archived_at` 推导 `archived`。 [读取视图](../backend/src/main/resources/db/migration/V1__paperflow_v2.sql) · [论文查询](../backend/src/main/resources/mapper/PaperMapper.xml)

@@ -490,6 +490,28 @@ paths:
                         items: {$ref: '#/components/schemas/Block'}
         '400': {$ref: '#/components/responses/Error'}
         '404': {$ref: '#/components/responses/Error'}
+  /papers/{paperId}/jobs:
+    parameters: [{$ref: '#/components/parameters/PaperId'}]
+    get:
+      operationId: listPaperJobRecords
+      description: 需要 PAPER_READ 和 JOB_READ。按论文 ID 返回已有新版任务项，包含已归档或历史论文的记录。ZIP 行须已成功登记原件，或预检时已找到该论文。仅有旧版处理状态的论文返回空分页。
+      parameters: [{$ref: '#/components/parameters/Page'}, {$ref: '#/components/parameters/Size'}]
+      responses:
+        '200':
+          description: 此论文的处理记录。按任务提交时间和任务 ID 降序，同一任务内按任务项 sequence 升序。total 为此论文符合条件的任务项总数。
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - {$ref: '#/components/schemas/Page'}
+                  - properties:
+                      items:
+                        type: array
+                        items: {$ref: '#/components/schemas/PaperJobRecord'}
+        '400': {$ref: '#/components/responses/Error'}
+        '401': {$ref: '#/components/responses/Error'}
+        '403': {$ref: '#/components/responses/Error'}
+        '404': {$ref: '#/components/responses/Error'}
   /papers/{paperId}/blocks/{sequence}/asset:
     parameters:
       - {$ref: '#/components/parameters/PaperId'}
@@ -926,6 +948,16 @@ components:
     JobItemState:
       type: string
       enum: [READY, QUEUED, RUNNING, SUCCEEDED, SKIPPED, FAILED]
+    PaperJobRecord:
+      type: object
+      required: [jobId, sequence, kind, state, message, createdAt]
+      properties:
+        jobId: {type: string, format: uuid}
+        sequence: {type: integer}
+        kind: {$ref: '#/components/schemas/JobKind'}
+        state: {$ref: '#/components/schemas/JobItemState'}
+        message: {type: [string, 'null']}
+        createdAt: {type: string, format: date-time, description: 任务提交时间。}
     Job:
       type: object
       required: [jobId, kind, state, total, ready, queued, running, succeeded, skipped, failed, canRetry, username, retryOf, createdAt, finishedAt, confirmedAt, scope]

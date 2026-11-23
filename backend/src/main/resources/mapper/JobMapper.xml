@@ -70,6 +70,20 @@
     <select id="countItems" resultType="long">
         SELECT count(*) FROM v2_job_item <include refid="itemFilters"/>
     </select>
+    <sql id="paperHistoryFilter">
+        WHERE i.paper_id = #{paperId}
+          AND (i.kind != 'ORIGINAL_IMPORT' OR i.state = 'SUCCEEDED'
+               OR (i.state = 'SKIPPED' AND i.result->>'paperId' = i.paper_id))
+    </sql>
+    <select id="paperHistory" resultType="com.paperflow.job.PaperJobRecord">
+        SELECT i.job_id, i.sequence, i.kind, i.state, i.message, j.created_at
+        FROM v2_job_item i JOIN v2_job j USING (job_id)
+        <include refid="paperHistoryFilter"/>
+        ORDER BY j.created_at DESC, i.job_id DESC, i.sequence LIMIT #{size} OFFSET #{offset}
+    </select>
+    <select id="countPaperHistory" resultType="long">
+        SELECT count(*) FROM v2_job_item i <include refid="paperHistoryFilter"/>
+    </select>
     <update id="confirm">
         UPDATE v2_job SET confirmed_at = now() WHERE job_id = CAST(#{id} AS uuid) AND confirmed_at IS NULL
     </update>
