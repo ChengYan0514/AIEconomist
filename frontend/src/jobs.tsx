@@ -1,12 +1,13 @@
-import { ArrowLeft, CalendarDays, CircleHelp, ClipboardList, FileArchive, RotateCcw, Workflow } from "lucide-react"
+import { ArrowLeft, CalendarDays, ClipboardList, FileArchive, RotateCcw, Workflow } from "lucide-react"
 import { useEffect, useState } from "react"
 import { api, dateLabel, errorMessage, jobPath, paperPath, params, useQuery } from "./api"
 import { Empty, JobChip, JobProgress, Loading, Notice, Pagination, jobKinds, jobLabels } from "./components/shared"
 import { Button } from "./components/ui/button"
 import { SectionHeader } from "./components/workspace"
+import { CandidateReview } from "./openalex-review"
 import { ArchiveUpload, ProcessPapers } from "./papers/forms"
 import { usePermissions } from "./permissions"
-import type { Job, JobItem, JobItemState, JobKind, JobState, OriginalPreflight, Page, Paper } from "./types"
+import type { Job, JobItem, JobItemState, JobKind, JobState, OriginalPreflight, Page } from "./types"
 
 const size = 20
 const states: JobState[] = ["READY", "QUEUED", "RUNNING", "SUCCEEDED", "PARTIAL", "FAILED"]
@@ -129,6 +130,7 @@ export function JobDetail({ id }: { id: string }) {
             {!reviewing && <><th scope="col">状态</th><th scope="col">结果</th></>}
           </tr></thead>
           <tbody>{itemPage.items.map((item) => {
+            const candidates = job.kind === "MATCH" ? item.result?.candidates : undefined
             const importedPaper = item.state === "SUCCEEDED" ? item.result?.paperId ?? item.paperId : null
             const linkedPaper = can("PAPER_READ") && (zipImport ? item.preflight?.existingPaperId ?? importedPaper : item.paperId)
             return <tr key={item.sequence}>
@@ -141,12 +143,14 @@ export function JobDetail({ id }: { id: string }) {
               {!reviewing && <>
                 <td><div className="flex flex-wrap gap-1">
                   <JobChip status={item.state} />
-                  {item.result?.candidates && item.result.candidates.length > 1 &&
+                  {candidates && candidates.length > 1 &&
                     <span className="status-chip status-blue"><span className="status-dot" />待确认匹配</span>}
                 </div></td>
                 <td className="result-cell"><span>{(item.message !== item.preflight?.reason && item.message) || "—"}</span>
                   {canJob("PUBLISH") && job.kind === "PARSE" && item.state === "SUCCEEDED" && item.paperId && <PublishParsed paperId={item.paperId} />}
-                  {canJob("MATCH") && can("PAPER_READ") && item.result?.candidates && item.result.candidates.length > 1 && item.paperId && <CandidatePicker item={item} />}
+                  {candidates && candidates.length > 1 && item.paperId && canJob("MATCH") && can("PAPER_READ") &&
+                    <CandidateReview paperId={item.paperId} candidates={candidates}
+                      source={item.result?.candidateSource} scopeSourceId={job.scope?.sourceId} />}
                 </td>
               </>}
             </tr>
@@ -181,35 +185,6 @@ function PublishParsed({ paperId }: { paperId: string }) {
   }
   return <div className="mt-2 grid gap-2">
     <Button className="justify-self-start" type="button" size="sm" variant="outline" disabled={busy} onClick={submit}>导入全文</Button>
-    {error && <Notice error>{error}</Notice>}
-  </div>
-}
-
-function CandidatePicker({ item }: { item: JobItem }) {
-  const [selected, setSelected] = useState("")
-  const [error, setError] = useState("")
-  const [resolved, setResolved] = useState(false)
-  const [busy, setBusy] = useState(false)
-  const path = paperPath(item.paperId!)
-  async function match() {
-    setError(""); setBusy(true)
-    try {
-      const paper = await api<Paper>(path)
-      if (paper.matchedWorkId) {
-        setResolved(true)
-        return
-      }
-      await api(path + "/match", { method: "POST", body: JSON.stringify({ version: paper.version, workId: selected }) })
-      setResolved(true)
-    } catch (reason) { setError(errorMessage(reason)) }
-    finally { setBusy(false) }
-  }
-  if (resolved) return <div className="inline-link mt-2"><a href={path}>查看已关联论文</a></div>
-  return <div className="candidate-picker">
-    <div className="flex items-center gap-2"><CircleHelp size={15} /><select className="field" aria-label="选择 OpenAlex 候选作品" value={selected} onChange={(e) => setSelected(e.target.value)}>
-      <option value="">选择候选作品</option>{item.result?.candidates?.map((work) =>
-        <option key={work.workId} value={work.workId}>{work.title || "未命名"} · {work.year || "—"} · {work.workId}</option>)}
-    </select><Button type="button" size="sm" disabled={!selected || busy} onClick={match}>确认匹配</Button></div>
     {error && <Notice error>{error}</Notice>}
   </div>
 }

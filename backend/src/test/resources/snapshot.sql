@@ -11,4 +11,4 @@ INSERT INTO works VALUES
     ('W125', 2024, 'Ambiguous Study, Alternative', '10.1/amb');
 INSERT INTO works_locations VALUES ('W123', 'S123'), ('W124', 'S123'), ('W125', 'S123');
 INSERT INTO authors VALUES ('A1', 'Alice'), ('A2', 'Bob');
-INSERT INTO works_authorships VALUES ('W123', 'A1'), ('W123', 'A2');
+INSERT INTO works_authorships VALUES ('W123', 'A1'), ('W123', 'A2'), ('W124', 'A1'), ('W125', 'A2');

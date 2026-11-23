@@ -84,7 +84,13 @@ export interface JobItem {
   state: JobItemState
   inputError: boolean
   message: string | null
-  result: { candidates?: Work[]; matched?: boolean; imported?: number; paperId?: string } | null
+  result: {
+    candidates?: Work[]
+    candidateSource?: { sourceId: string; name: string | null } | null
+    matched?: boolean
+    imported?: number
+    paperId?: string
+  } | null
   preflight: OriginalPreflight | null
 }
 
