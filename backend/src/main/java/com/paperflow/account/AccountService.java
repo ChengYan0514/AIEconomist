@@ -20,7 +20,7 @@ public final class AccountService {
         validateUsername(username);
         if (accounts.credentials(username) == null) {
             validatePassword(password);
-            accounts.create(username, username, passwords.encode(password), Role.SYSTEM_ADMIN, false);
+            accounts.create(username, username, passwords.encode(password), Role.SYSTEM_ADMIN.name(), false);
         }
     }
 

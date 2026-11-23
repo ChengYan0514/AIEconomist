@@ -55,6 +55,17 @@ public final class WorkspaceAccess {
         };
     }
 
+    public AuthorizationManager<RequestAuthorizationContext> requireAny(Permission first, Permission... alternatives) {
+        return (authentication, context) -> {
+            var access = load(authentication.get(), context.getRequest());
+            for (Permission permission : alternatives) {
+                if (access.permissions().contains(permission)) return ALLOW;
+            }
+            require(access, first);
+            return ALLOW;
+        };
+    }
+
     public AuthorizationManager<RequestAuthorizationContext> requireAction(Permission permission, String action,
                                                                             String objectType, String objectId) {
         return (authentication, context) -> {

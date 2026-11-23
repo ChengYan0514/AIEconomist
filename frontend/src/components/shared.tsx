@@ -1,10 +1,10 @@
 import { AlertCircle, ChevronLeft, ChevronRight, FolderOpen, LoaderCircle, X } from "lucide-react"
 import { useEffect, useId, useRef, useState, type ReactNode } from "react"
 import { params, useQuery } from "../api"
-import type { JobItemState, JobKind, JobState, PaperStatus, Source } from "../types"
+import type { Job, JobItemState, JobKind, JobState, PaperStatus, Source } from "../types"
 import { Button } from "./ui/button"
 
-const paperLabels: Record<PaperStatus, [string, string]> = {
+export const paperLabels: Record<PaperStatus, [string, string]> = {
   PUBLISHED: ["已发布全文", "green"], READY: ["待导入全文", "green"], UNPROCESSED: ["待解析", "neutral"],
   FAILED: ["处理失败", "red"], UNSUPPORTED: ["格式暂不支持解析", "neutral"],
 }
@@ -26,6 +26,13 @@ export function Chip({ status }: { status: PaperStatus | JobState }) {
 export function JobChip({ status }: { status: JobState | JobItemState }) {
   const [label, color] = jobLabels[status]
   return <span className={"status-chip status-" + color}><span className="status-dot" />{label}</span>
+}
+
+export function JobProgress({ job }: { job: Job }) {
+  const complete = job.succeeded + job.skipped + job.failed
+  return <div className="job-progress">
+    <progress aria-label="处理进度" max={Math.max(job.total, 1)} value={complete} /><small>{complete} / {job.total}</small>
+  </div>
 }
 
 export function Loading({ label = "正在加载…" }: { label?: string }) {

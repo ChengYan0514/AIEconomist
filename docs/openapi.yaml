@@ -99,7 +99,7 @@ paths:
         '403': {$ref: '#/components/responses/Error'}
     post:
       operationId: createUser
-      description: 需要 SYSTEM_MANAGE。用户名去除首尾空白并转为小写，创建后保持固定。
+      description: 需要 SYSTEM_MANAGE。用户名去除首尾空白并转为小写，创建后保持固定。角色必须存在。
       requestBody:
         required: true
         content:
@@ -121,6 +121,7 @@ paths:
               schema: {$ref: '#/components/schemas/IssuedPassword'}
         '400': {$ref: '#/components/responses/Error'}
         '403': {$ref: '#/components/responses/Error'}
+        '404': {$ref: '#/components/responses/Error', description: ROLE_NOT_FOUND}
         '409': {$ref: '#/components/responses/Error', description: USERNAME_TAKEN}
   /users/{username}:
     patch:
@@ -141,7 +142,7 @@ paths:
               schema: {$ref: '#/components/schemas/PlatformUser'}
         '400': {$ref: '#/components/responses/Error'}
         '403': {$ref: '#/components/responses/Error'}
-        '404': {$ref: '#/components/responses/Error'}
+        '404': {$ref: '#/components/responses/Error', description: USER_NOT_FOUND 或 ROLE_NOT_FOUND}
         '409': {$ref: '#/components/responses/Error', description: LAST_SYSTEM_ADMIN}
   /users/{username}/status:
     parameters: [{$ref: '#/components/parameters/Username'}]
@@ -184,6 +185,85 @@ paths:
         '401': {$ref: '#/components/responses/Error'}
         '403': {$ref: '#/components/responses/Error'}
         '404': {$ref: '#/components/responses/Error'}
+  /roles:
+    get:
+      operationId: listRoles
+      description: 需要 SYSTEM_MANAGE。返回内置及自定义角色和可授权的业务权限目录。
+      responses:
+        '200':
+          description: 角色及分组权限
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items, permissionGroups]
+                properties:
+                  items: {type: array, items: {$ref: '#/components/schemas/RoleSummary'}}
+                  permissionGroups: {type: array, items: {$ref: '#/components/schemas/PermissionGroup'}}
+        '403': {$ref: '#/components/responses/Error'}
+    post:
+      operationId: createRole
+      description: 需要 SYSTEM_MANAGE。新角色未分配给任何用户，名称忽略大小写后唯一。
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/RoleProfile'}
+      responses:
+        '201':
+          description: 自定义角色详情
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/RoleDetail'}
+        '400': {$ref: '#/components/responses/Error'}
+        '403': {$ref: '#/components/responses/Error'}
+        '409': {$ref: '#/components/responses/Error', description: ROLE_NAME_TAKEN}
+  /roles/{roleId}:
+    parameters:
+      - {name: roleId, in: path, required: true, schema: {$ref: '#/components/schemas/UserRole'}}
+    get:
+      operationId: getRole
+      description: 需要 SYSTEM_MANAGE。成员包含停用账号。
+      responses:
+        '200':
+          description: 角色说明、权限和已分配用户
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/RoleDetail'}
+        '403': {$ref: '#/components/responses/Error'}
+        '404': {$ref: '#/components/responses/Error', description: ROLE_NOT_FOUND}
+    put:
+      operationId: updateRole
+      description: 需要 SYSTEM_MANAGE。更新自定义角色，对现有会话后续请求生效。已分配人数变化时应重新确认。
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              allOf:
+                - {$ref: '#/components/schemas/RoleProfile'}
+                - type: object
+                  required: [expectedUserCount]
+                  properties:
+                    expectedUserCount: {type: integer, format: int64, minimum: 0}
+      responses:
+        '200':
+          description: 已更新的自定义角色详情
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/RoleDetail'}
+        '400': {$ref: '#/components/responses/Error'}
+        '403': {$ref: '#/components/responses/Error'}
+        '404': {$ref: '#/components/responses/Error', description: ROLE_NOT_FOUND}
+        '409': {$ref: '#/components/responses/Error', description: BUILT_IN_ROLE、ROLE_NAME_TAKEN 或 ROLE_ASSIGNMENTS_CHANGED}
+    delete:
+      operationId: deleteRole
+      description: 需要 SYSTEM_MANAGE。仅可删除未分配给任何用户的自定义角色。
+      responses:
+        '204': {description: 角色已删除}
+        '403': {$ref: '#/components/responses/Error'}
+        '404': {$ref: '#/components/responses/Error', description: ROLE_NOT_FOUND}
+        '409': {$ref: '#/components/responses/Error', description: BUILT_IN_ROLE 或 ROLE_IN_USE}
   /papers:
     get:
       operationId: listPapers
@@ -456,6 +536,7 @@ paths:
   /sources:
     get:
       operationId: searchSources
+      description: 需要 PAPER_READ、PDF_PARSE 或 FULL_TEXT_IMPORT 中的一项。
       parameters:
         - {name: q, in: query, schema: {type: string, maxLength: 200}}
       responses:
@@ -646,8 +727,63 @@ components:
   schemas:
     UserRole:
       type: string
-      enum: [SYSTEM_ADMIN, DATA_MAINTAINER, READ_ONLY]
-      description: 系统管理员、数据维护员、只读用户
+      pattern: '^(SYSTEM_ADMIN|DATA_MAINTAINER|READ_ONLY|CUSTOM_[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})$'
+      description: 平台用户唯一分配的角色 ID。内置角色为 SYSTEM_ADMIN、DATA_MAINTAINER、READ_ONLY。
+    RoleProfile:
+      type: object
+      required: [name, description, permissions]
+      properties:
+        name: {type: string, minLength: 1, maxLength: 100}
+        description: {type: string, maxLength: 500}
+        permissions:
+          type: array
+          uniqueItems: true
+          items: {$ref: '#/components/schemas/BusinessPermission'}
+    BusinessPermission:
+      type: string
+      enum: [PAPER_READ, CONTENT_READ, PAPER_CSV_EXPORT, PAPER_WRITE, JOB_READ, PDF_PARSE, FULL_TEXT_IMPORT, OPENALEX_MANAGE]
+      description: |
+        CONTENT_READ 和 PAPER_WRITE 依赖 PAPER_READ。PDF_PARSE 和 FULL_TEXT_IMPORT 依赖 JOB_READ。
+        OPENALEX_MANAGE 依赖 PAPER_READ 及 JOB_READ。CSV 导出单独授权。
+    RoleSummary:
+      type: object
+      required: [id, name, description, builtIn, userCount]
+      properties:
+        id: {$ref: '#/components/schemas/UserRole'}
+        name: {type: string}
+        description: {type: string}
+        builtIn: {type: boolean}
+        userCount: {type: integer, format: int64, minimum: 0, description: 含启用及停用用户}
+    RoleDetail:
+      allOf:
+        - {$ref: '#/components/schemas/RoleSummary'}
+        - type: object
+          required: [permissions, members]
+          properties:
+            permissions: {type: array, items: {$ref: '#/components/schemas/Permission'}}
+            members:
+              type: array
+              items:
+                type: object
+                required: [username, displayName, status]
+                properties:
+                  username: {type: string}
+                  displayName: {type: string}
+                  status: {$ref: '#/components/schemas/UserStatus'}
+    PermissionGroup:
+      type: object
+      required: [label, permissions]
+      properties:
+        label: {type: string}
+        permissions:
+          type: array
+          items:
+            type: object
+            required: [code, label, requires]
+            properties:
+              code: {$ref: '#/components/schemas/BusinessPermission'}
+              label: {type: string}
+              requires: {type: array, items: {$ref: '#/components/schemas/BusinessPermission'}}
     UserStatus:
       type: string
       enum: [ACTIVE, DISABLED]
@@ -679,7 +815,7 @@ components:
         PAPER_READ 允许查阅论文书目、关联及出版来源。CONTENT_READ 允许读取原件、已发布全文及资源。
         PAPER_CSV_EXPORT 单独授权 CSV 下载。PAPER_WRITE 允许导入、编辑、替换、归档恢复及原件导入任务。
         JOB_READ 允许读任务。PDF_PARSE、FULL_TEXT_IMPORT 分别允许提交或重试相应任务。
-        OPENALEX_MANAGE 允许元数据导入、匹配和候选复核。SYSTEM_MANAGE 允许管理用户、检查系统状态及读取审计日志。
+        OPENALEX_MANAGE 允许元数据导入、匹配和候选复核。SYSTEM_MANAGE 仅由内置系统管理员持有，用于管理用户和角色、查看系统状态及审计。
         系统管理员拥有全部权限。数据维护员拥有除 PAPER_CSV_EXPORT 和 SYSTEM_MANAGE 外的权限。
         只读用户拥有 PAPER_READ 和 CONTENT_READ。任务提交和重试基于任务类型校验执行及 JOB_READ 权限。
     Page:
@@ -731,9 +867,9 @@ components:
         eventId: {type: integer, format: int64}
         occurredAt: {type: string, format: date-time}
         actor: {type: string}
-        action: {type: string, description: 含 PAPER_CSV_EXPORT、USER_CREATE、USER_DISPLAY_NAME_CHANGE、USER_ROLE_CHANGE、USER_DISABLE、USER_ENABLE 和 USER_PASSWORD_RESET}
-        objectType: {type: string, description: CSV 导出的对象类型为 PAPER_COLLECTION，用户变更的对象类型为 USER}
-        objectId: {type: string, description: CSV 导出的对象 ID 为 papers，用户变更的对象 ID 为用户名}
+        action: {type: string, description: 含 PAPER_CSV_EXPORT、USER_CREATE、USER_DISPLAY_NAME_CHANGE、USER_ROLE_CHANGE、USER_DISABLE、USER_ENABLE、USER_PASSWORD_RESET、ROLE_CREATE、ROLE_UPDATE 和 ROLE_DELETE}
+        objectType: {type: string, description: CSV 导出对象为 PAPER_COLLECTION，用户变更对象为 USER，角色变更对象为 ROLE}
+        objectId: {type: string, description: CSV 导出对象 ID 为 papers，用户变更对象 ID 为用户名，角色变更对象 ID 为角色 ID}
         outcome: {$ref: '#/components/schemas/AuditOutcome'}
     Metadata:
       type: object

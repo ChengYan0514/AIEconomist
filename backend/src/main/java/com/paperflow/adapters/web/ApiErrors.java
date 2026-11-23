@@ -1,6 +1,7 @@
 package com.paperflow.adapters.web;
 
 import com.paperflow.account.model.UserManagementException;
+import com.paperflow.account.model.RoleManagementException;
 import com.paperflow.audit.model.AuditEventNotFound;
 import com.paperflow.job.JobConflict;
 import com.paperflow.job.JobNotFound;
@@ -30,6 +31,13 @@ public class ApiErrors {
     @ExceptionHandler(UserManagementException.class)
     public ResponseEntity<Error> userManagement(UserManagementException error) {
         var status = error.reason() == UserManagementException.Reason.USER_NOT_FOUND ? HttpStatus.NOT_FOUND : HttpStatus.CONFLICT;
+        return response(status, error.reason().name(), error.getMessage());
+    }
+
+    @ExceptionHandler(RoleManagementException.class)
+    public ResponseEntity<Error> roleManagement(RoleManagementException error) {
+        var status = error.reason() == RoleManagementException.Reason.ROLE_NOT_FOUND
+                ? HttpStatus.NOT_FOUND : HttpStatus.CONFLICT;
         return response(status, error.reason().name(), error.getMessage());
     }
 

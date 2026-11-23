@@ -3,7 +3,6 @@ package com.paperflow.adapters.persistence;
 import com.paperflow.account.Accounts;
 import com.paperflow.account.model.AccountAccess;
 import com.paperflow.account.model.PlatformUser;
-import com.paperflow.account.model.Role;
 import org.apache.ibatis.annotations.Insert;
 import org.apache.ibatis.annotations.Select;
 import org.apache.ibatis.annotations.Update;
@@ -19,13 +18,26 @@ public interface AccountMapper extends Accounts {
               <if test="enabled != null">AND enabled = #{enabled}</if>
             """;
 
+    record AccessRow(String username, String displayName, String role, boolean enabled,
+                     boolean mustChangePassword, long credentialVersion, String codes) {}
+
     @Override
     @Select("SELECT password_hash, enabled, must_change_password, credential_version FROM v2_admin WHERE username = #{username}")
     Credentials credentials(String username);
 
     @Override
-    @Select("SELECT username, display_name, role, enabled, must_change_password, credential_version FROM v2_admin WHERE username = #{username}")
-    AccountAccess access(String username);
+    default AccountAccess access(String username) {
+        var row = accessRow(username);
+        return row == null ? null : new AccountAccess(row.username(), row.displayName(), row.role(), row.enabled(),
+                row.mustChangePassword(), row.credentialVersion(), RoleMapper.permissions(row.role(), row.codes()));
+    }
+
+    @Select("""
+            SELECT a.username, a.display_name, a.role, a.enabled, a.must_change_password, a.credential_version,
+                array_to_string(r.permissions, ',') AS codes
+            FROM v2_admin a JOIN v2_role r ON r.role_id = a.role WHERE a.username = #{username}
+            """)
+    AccessRow accessRow(String username);
 
     @Override
     @Select("SELECT " + USER_COLUMNS + " FROM v2_admin WHERE username = #{username}")
@@ -34,11 +46,11 @@ public interface AccountMapper extends Accounts {
     @Override
     @Select("<script>SELECT " + USER_COLUMNS + " FROM v2_admin " + USER_FILTER
             + " ORDER BY username LIMIT #{size} OFFSET #{offset}</script>")
-    List<PlatformUser> list(String query, Role role, Boolean enabled, long offset, int size);
+    List<PlatformUser> list(String query, String role, Boolean enabled, long offset, int size);
 
     @Override
     @Select("<script>SELECT count(*) FROM v2_admin " + USER_FILTER + "</script>")
-    long count(String query, Role role, Boolean enabled);
+    long count(String query, String role, Boolean enabled);
 
     @Override
     @Insert("""
@@ -46,7 +58,7 @@ public interface AccountMapper extends Accounts {
             VALUES (#{username}, #{displayName}, #{passwordHash}, #{role}, #{mustChangePassword})
             ON CONFLICT (username) DO NOTHING
             """)
-    int create(String username, String displayName, String passwordHash, Role role, boolean mustChangePassword);
+    int create(String username, String displayName, String passwordHash, String role, boolean mustChangePassword);
 
     @Override
     @Update("""
@@ -73,7 +85,7 @@ public interface AccountMapper extends Accounts {
 
     @Override
     @Update("UPDATE v2_admin SET display_name = #{displayName}, role = #{role} WHERE username = #{username}")
-    void updateProfile(String username, String displayName, Role role);
+    void updateProfile(String username, String displayName, String role);
 
     @Override
     @Update("""

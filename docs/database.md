@@ -10,7 +10,7 @@
 | v2 迁移历史 | 同一业务 schema 的 `v2_flyway_schema_history` | 由 Flyway 管理，记录版本、脚本、校验和及应用结果。已有非空 schema 可从版本 `0` 建立基线，随后执行 v2 迁移。配置禁用创建 schema 和 `clean`。 |
 | OpenAlex 快照 | 同一 JDBC 数据库的 `dataset_20241125` schema | SQL 带 schema 名执行 `SELECT`。`PAPERFLOW_OPENALEX_SCHEMA` 优先于 `OPENALEX_DB_SCHEMA`。配置校验 schema 名为小写 PostgreSQL 标识符。 |
 
-`V1` 创建七张业务表和 `v2_paper_read` 视图。`V2` 增加审计事件表。`V3` 接续 v2 账号并增加用户资料、内置角色和凭据版本。旧库和快照通过 `SELECT` 访问。创建视图时，`source`、`original_file`、`original_file_job` 及视图使用的列必须已存在。历史文本和书目表在相关查询时访问。历史论文从兼容视图即时读取，首次写入时按篇登记。旧平台主库和因果库分别使用自己的 `flyway_schema_history` 和 `flyway_causal_schema_history`。 [数据库迁移](../backend/src/main/resources/db/migration/V1__paperflow_v2.sql) · [配置校验](../backend/src/main/java/com/paperflow/main/WorkspaceProperties.java)
+`V1` 创建七张业务表和 `v2_paper_read` 视图。`V2` 增加审计事件表。`V3` 接续 v2 账号并增加用户资料、内置角色和凭据版本。`V4` 登记内置和自定义角色，并为现有单角色列加外键。旧库和快照通过 `SELECT` 访问。创建视图时，`source`、`original_file`、`original_file_job` 及视图使用的列必须已存在。历史文本和书目表在相关查询时访问。历史论文从兼容视图即时读取，首次写入时按篇登记。旧平台主库和因果库分别使用自己的 `flyway_schema_history` 和 `flyway_causal_schema_history`。 [数据库迁移](../backend/src/main/resources/db/migration/V1__paperflow_v2.sql) · [配置校验](../backend/src/main/java/com/paperflow/main/WorkspaceProperties.java)
 
 ## v2 表结构
 
@@ -24,12 +24,23 @@
 | `password_hash` | `varchar(100)`，必填 | 当前密码的 BCrypt 散列。 |
 | `created_at` | `timestamptz`，必填，默认 `now()` | 账号登记时间。 |
 | `display_name` | `varchar(100)`，必填 | 可编辑的显示名称。旧账号迁移时取原用户名。 |
-| `role` | `varchar(32)`，必填 | 用户的单个角色。迁移时旧账号保留为系统管理员。 |
+| `role` | `varchar(43)`，必填，外键引用 `v2_role.role_id` | 用户的单个角色。迁移保留原有角色值。 |
 | `enabled` | `boolean`，必填，默认 `true` | 账号是否启用。 |
 | `must_change_password` | `boolean`，必填，默认 `false` | 新建或重置临时密码后需要设置个人密码。 |
 | `credential_version` | `bigint`，必填，默认 `0` | 启停、重置或个人改密时递增，旧会话登录时保存的版本会失效。 |
 
 启动时可由 `PAPERFLOW_ADMIN_USERNAME` 和 `PAPERFLOW_ADMIN_PASSWORD` 创建指定的缺失系统管理员。V3 在同一表登记所有账号，保留既有用户的散列、用户名和任务外键。角色、启停状态及凭据版本在业务请求时读取。用户资料变更、启停和重置密码均与对应审计成功事件在同一事务写入。停用和角色调整共用 PostgreSQL 事务锁，确保并发修改后仍有启用的系统管理员。 [账号迁移](../backend/src/main/resources/db/migration/V3__platform_users.sql) · [账号查询](../backend/src/main/java/com/paperflow/adapters/persistence/AccountMapper.java) · [安全配置](../backend/src/main/java/com/paperflow/main/SecurityConfiguration.java)
+
+### `v2_role`
+
+| 列 | 类型与约束 | 用途 |
+| --- | --- | --- |
+| `role_id` | `varchar(43)`，主键 | 固定的内置角色 ID，或带 `CUSTOM_` 前缀的 UUID。 |
+| `name` | `varchar(100)`，必填，忽略大小写后唯一 | 用户管理及角色管理显示的角色名称。 |
+| `description` | `varchar(500)`，必填 | 角色说明。 |
+| `permissions` | `text[]`，必填 | 自定义角色的业务权限。内置角色的权限由应用定义。 |
+
+请求按账号与角色的当前关联读取权限。角色增删改与账号分配共用管理事务锁，并与对应成功审计同时提交。角色成员查询使用 `v2_admin_role_username` 索引，停用账号也持有角色引用。外键保护所有已分配角色。 [角色迁移](../backend/src/main/resources/db/migration/V4__platform_roles.sql)
 
 ### `v2_audit_event`
 

@@ -63,7 +63,7 @@ test("系统管理员创建只读用户，用户设置个人密码后查阅论�
   await form.getByRole("button", { name: "保存修改" }).click()
   await admin.getByText("没有找到用户", { exact: true }).waitFor()
   await admin.getByRole("link", { name: "审计日志" }).click()
-  await admin.getByRole("button", { name: "变更用户角色" }).click()
+  await admin.getByRole("row", { name: /browser.reader/ }).getByRole("button", { name: "变更用户角色" }).click()
   const event = admin.getByRole("region", { name: "事件详情" })
   await event.getByText("数据维护员", { exact: true }).waitFor()
   await event.getByRole("link", { name: "查看用户" }).click()

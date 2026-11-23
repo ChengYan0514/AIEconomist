@@ -66,7 +66,7 @@ export interface Job {
   createdAt: string
   finishedAt: string | null
   confirmedAt: string | null
-  scope: { sourceId?: string; filename?: string; yearFrom?: number; yearTo?: number }
+  scope: { sourceId?: string; filename?: string; yearFrom?: number; yearTo?: number; selectedCount?: number }
 }
 
 export interface Work {
