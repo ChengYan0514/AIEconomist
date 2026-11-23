@@ -101,6 +101,13 @@ public final class JobService {
         return jobs.countItems(id, state);
     }
 
+    public PaperHistory paperHistory(String paperId, int size, long offset) {
+        papers.get(paperId);
+        return new PaperHistory(jobs.paperHistory(paperId, size, offset), jobs.countPaperHistory(paperId));
+    }
+
+    public record PaperHistory(List<PaperJobRecord> items, long total) {}
+
     private List<JobItem> prepare(UUID id, JobRequest request) {
         if (request.sourceId() != null) papers.validateSource(request.sourceId());
         if (request.kind() == JobKind.METADATA) {

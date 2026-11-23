@@ -167,6 +167,8 @@
 
 ZIP 预检通过项从固定的 `input.entry` 读取预检时的原件路径。预检跳过和失败项继续使用 `input = '{}'`，并在终态 `result.preflightPath` 记录包内路径。接口在 `preflight` 中提供该路径，原有公开 `result` 保持其结构。旧任务如未记录路径则返回空值。
 
+`V5` 增加 `paper_id` 非空项的索引，供论文处理记录精确查询。ZIP 行只有成功登记后，或预检结果的 `result.paperId` 指向已登记论文时，才纳入对应的处理记录。 [处理记录索引](../backend/src/main/resources/db/migration/V5__paper_job_history.sql)
+
 ## `v2_paper_read` 与版本语义
 
 视图供论文详情、分页、条件筛选、导出及按范围选取任务目标使用。相同论文 ID 优先取 `v2_paper`。余下历史论文从 `original_file` 取得书目和文件字段，并连接 `original_file_job`。两部分都通过 `source.source_id` 取 `source_name`，本地缺少来源行时名称为空。历史未登记行的 `revision` 和 `version` 为 `0`，解析与发布指针为空，更新时间取 `updated_at`、`created_at` 中首个非空值。新版行将 `file_revision`、`record_version` 投影为 `revision`、`version`，并从 `archived_at` 推导 `archived`。 [读取视图](../backend/src/main/resources/db/migration/V1__paperflow_v2.sql) · [论文查询](../backend/src/main/resources/mapper/PaperMapper.xml)
@@ -209,7 +211,7 @@ ZIP 预检通过项从固定的 `input.entry` 读取预检时的原件路径。�
 
 原件为历史版本的条件是 `legacy = true` 且 `revision = 0`，文件按 `PAPERFLOW_LEGACY_STORAGE`（缺省回退到 `DATA_ROOT` 或 `var/legacy`）读取。已有 `published_parse_id` 时，正文和图片只从它对应的新版内容块读取。指针为空且使用历史原件时，正文回退到旧 `block` 及扩展表。历史正文可以在原件文件缺失时查阅。历史图表路径以 `openalex/` 或 `paperflow/` 开头时直接使用，其余相对路径尝试拼接该论文的解析文件目录。历史论文需要导入旧解析产物时，读取 `text_file` 中的 JSON 路径，在新版登记产物及新内容块，产物文件继续从旧目录读取。新写入原件和新生成解析产物使用 `PAPERFLOW_STORAGE`，默认 `var/paperflow`。 [文件访问](../backend/src/main/java/com/paperflow/adapters/files/FileStorage.java) · [全文服务](../backend/src/main/java/com/paperflow/fulltext/FullTextService.java) · [全文查询](../backend/src/main/resources/mapper/FullTextMapper.xml)
 
-OpenAlex 匹配在同一来源内合并 `v2_openalex_work` 和旧作品候选。相同 `(source_id, work_id)` 优先使用新版元数据。先查 DOI，结果为空时才按年份、规范化标题和作者集合筛选。匹配写入 `v2_paper`，旧绑定检查与新版的唯一索引共同约束已关联的作品。 [OpenAlex 查询](../backend/src/main/resources/mapper/OpenAlexMapper.xml) · [匹配规则](../backend/src/main/java/com/paperflow/openalex/OpenAlexService.java)
+OpenAlex 匹配在同一来源内合并 `v2_openalex_work` 和旧作品候选。相同 `(source_id, work_id)` 优先使用新版元数据。先查 DOI，结果为空时才按年份、规范化标题和作者集合筛选。匹配写入 `v2_paper`，旧绑定检查与新版的唯一索引共同约束已关联的作品。`v2_job_item.result` 保存匹配时的候选作品书目和出版来源，旧 JSON 结果可能缺少来源字段。 [OpenAlex 查询](../backend/src/main/resources/mapper/OpenAlexMapper.xml) · [匹配规则](../backend/src/main/java/com/paperflow/openalex/OpenAlexService.java)
 
 ## OpenAlex 快照读取
 

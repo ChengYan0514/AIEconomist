@@ -88,6 +88,13 @@ public class JobController {
         return new Page<>(items, page, size, total);
     }
 
+    @GetMapping("/papers/{paperId}/jobs")
+    Page<PaperJobRecord> paperHistory(@PathVariable String paperId, @RequestParam(defaultValue = "0") int page,
+                                     @RequestParam(defaultValue = "20") int size) {
+        var history = jobs.paperHistory(paperId, size, Page.offset(page, size));
+        return new Page<>(history.items(), page, size, history.total());
+    }
+
     @PostMapping("/jobs/{jobId}/retry")
     @ResponseStatus(HttpStatus.ACCEPTED)
     JobView retry(@PathVariable UUID jobId, @RequestAttribute(CURRENT_ACCOUNT) AccountAccess actor) {

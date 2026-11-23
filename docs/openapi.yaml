@@ -515,6 +515,28 @@ paths:
                         items: {$ref: '#/components/schemas/Block'}
         '400': {$ref: '#/components/responses/Error'}
         '404': {$ref: '#/components/responses/Error'}
+  /papers/{paperId}/jobs:
+    parameters: [{$ref: '#/components/parameters/PaperId'}]
+    get:
+      operationId: listPaperJobRecords
+      description: 需要 PAPER_READ 和 JOB_READ。按论文 ID 返回已有新版任务项，包含已归档或历史论文的记录。ZIP 行须已成功登记原件，或预检时已找到该论文。仅有旧版处理状态的论文返回空分页。
+      parameters: [{$ref: '#/components/parameters/Page'}, {$ref: '#/components/parameters/Size'}]
+      responses:
+        '200':
+          description: 此论文的处理记录。按任务提交时间和任务 ID 降序，同一任务内按任务项 sequence 升序。total 为此论文符合条件的任务项总数。
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - {$ref: '#/components/schemas/Page'}
+                  - properties:
+                      items:
+                        type: array
+                        items: {$ref: '#/components/schemas/PaperJobRecord'}
+        '400': {$ref: '#/components/responses/Error'}
+        '401': {$ref: '#/components/responses/Error'}
+        '403': {$ref: '#/components/responses/Error'}
+        '404': {$ref: '#/components/responses/Error'}
   /papers/{paperId}/blocks/{sequence}/asset:
     parameters:
       - {$ref: '#/components/parameters/PaperId'}
@@ -539,6 +561,7 @@ paths:
     parameters: [{$ref: '#/components/parameters/PaperId'}]
     post:
       operationId: confirmMatch
+      description: 使用打开候选复核时读取的论文版本确认关联。服务端重新校验论文版本、当前候选与作品唯一性。
       requestBody:
         required: true
         content:
@@ -552,8 +575,11 @@ paths:
       responses:
         '200': {$ref: '#/components/responses/Paper'}
         '400': {$ref: '#/components/responses/Error'}
+        '403': {$ref: '#/components/responses/Error'}
         '404': {$ref: '#/components/responses/Error'}
-        '409': {$ref: '#/components/responses/Error'}
+        '409':
+          $ref: '#/components/responses/Error'
+          description: 论文版本或归档状态已变化，候选已变化，或作品已有论文关联。
   /sources:
     get:
       operationId: searchSources
@@ -956,6 +982,16 @@ components:
     JobItemState:
       type: string
       enum: [READY, QUEUED, RUNNING, SUCCEEDED, SKIPPED, FAILED]
+    PaperJobRecord:
+      type: object
+      required: [jobId, sequence, kind, state, message, createdAt]
+      properties:
+        jobId: {type: string, format: uuid}
+        sequence: {type: integer}
+        kind: {$ref: '#/components/schemas/JobKind'}
+        state: {$ref: '#/components/schemas/JobItemState'}
+        message: {type: [string, 'null']}
+        createdAt: {type: string, format: date-time, description: 任务提交时间。}
     Job:
       type: object
       required: [jobId, kind, state, total, ready, queued, running, succeeded, skipped, failed, canRetry, username, retryOf, createdAt, finishedAt, confirmedAt, scope]
@@ -987,12 +1023,35 @@ components:
         state: {$ref: '#/components/schemas/JobItemState'}
         inputError: {type: boolean, description: 此项在 ZIP 预检阶段失败，需要修正后重新上传。}
         message: {type: [string, 'null']}
-        result: {type: [object, 'null']}
+        result:
+          type: [object, 'null']
+          description: 随任务类型变化。匹配任务保存执行时的候选书目和出版来源。
+          properties:
+            candidates:
+              type: array
+              items: {$ref: '#/components/schemas/MatchCandidate'}
+            matched: {type: boolean}
+            candidateSource:
+              type: [object, 'null']
+              description: 候选的出版来源。无候选时为空，旧匹配结果可以省略此字段。
+              required: [sourceId, name]
+              properties:
+                sourceId: {type: string}
+                name: {type: [string, 'null']}
         preflight:
           oneOf:
             - $ref: '#/components/schemas/OriginalPreflight'
             - type: 'null'
           description: ZIP 行的预检结果，执行后仍可读取。其他任务返回 null。
+    MatchCandidate:
+      type: object
+      required: [workId, year, title, doi, authors]
+      properties:
+        workId: {type: string}
+        year: {type: [integer, 'null']}
+        title: {type: [string, 'null']}
+        doi: {type: [string, 'null']}
+        authors: {type: string}
     OriginalPreflight:
       type: object
       required: [status, originalPath, reason, existingPaperId]

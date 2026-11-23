@@ -58,14 +58,16 @@ export function Pagination({ page, size, total, change }: { page: number; size: 
   </div>
 }
 
-export function Modal({ title, description, children, onClose }: { title: string; description?: string; children: ReactNode; onClose: () => void }) {
+export function Modal({ title, description, children, onClose, closeDisabled }: {
+  title: string; description?: string; children: ReactNode; onClose: () => void; closeDisabled?: boolean
+}) {
   const ref = useRef<HTMLDialogElement>(null)
   const id = useId()
   useEffect(() => { ref.current?.showModal() }, [])
-  return <dialog ref={ref} className="modal" aria-labelledby={id} onCancel={(event) => { event.preventDefault(); onClose() }}>
+  return <dialog ref={ref} className="modal" aria-labelledby={id} onCancel={(event) => { event.preventDefault(); if (!closeDisabled) onClose() }}>
     <div className="modal-heading">
       <div><h2 id={id}>{title}</h2>{description && <p>{description}</p>}</div>
-      <Button type="button" variant="ghost" size="icon" onClick={onClose} aria-label="关闭"><X size={20} /></Button>
+      <Button type="button" variant="ghost" size="icon" onClick={onClose} aria-label="关闭" disabled={closeDisabled}><X size={20} /></Button>
     </div>
     {children}
   </dialog>

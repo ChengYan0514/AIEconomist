@@ -11,6 +11,8 @@ public interface JobStore {
     long count(JobKind kind, String state);
     List<JobItem> items(UUID id, String state, int size, long offset);
     long countItems(UUID id, String state);
+    List<PaperJobRecord> paperHistory(String paperId, int size, long offset);
+    long countPaperHistory(String paperId);
     int confirm(UUID id);
     int queueReady(UUID id);
     int retryFailed(UUID id, UUID previous);
