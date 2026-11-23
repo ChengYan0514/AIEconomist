@@ -22,6 +22,7 @@ type AuditDetail = AuditEvent & { summary: Record<string, string | number | bool
 const actions: Record<string, string> = {
   PAPER_CSV_EXPORT: "论文 CSV 导出", USER_CREATE: "创建用户", USER_UPDATE: "编辑用户",
   USER_DISPLAY_NAME_CHANGE: "修改显示名称", USER_ROLE_CHANGE: "变更用户角色",
+  USER_DISABLE: "停用用户", USER_ENABLE: "恢复用户", USER_PASSWORD_RESET: "重置用户密码", USER_STATUS_CHANGE: "修改用户状态",
   API_ACCESS: "访问 API", JOB_SUBMIT: "提交任务", JOB_RETRY: "重试任务",
 }
 const objects: Record<string, string> = {
@@ -32,6 +33,7 @@ const outcomes: Record<Outcome, [string, string]> = {
 }
 const summaryLabels: Record<string, string> = {
   displayName: "显示名称", previousDisplayName: "原显示名称", role: "角色", previousRole: "原角色", permission: "所需权限",
+  previousAccountStatus: "原账号状态", accountStatus: "账号状态", mustChangePassword: "需设置个人密码",
   exportedRows: "导出行数", searchApplied: "应用了搜索词", archived: "归档视图",
   sourceId: "来源 ID", yearFrom: "起始年份", yearTo: "结束年份", status: "处理状态", code: "错误代码",
 }
@@ -188,6 +190,9 @@ function EventDetail({ id, close }: { id: string; close: () => void }) {
 }
 
 function SummaryItem({ name, value }: { name: string; value: AuditDetail["summary"][string] }) {
+  if (name === "accountStatus" || name === "previousAccountStatus") {
+    return <><dt>{summaryLabels[name]}</dt><dd>{value === "ACTIVE" ? "启用" : "停用"}</dd></>
+  }
   return <><dt>{summaryLabels[name] ?? name}</dt><dd>
     {name === "status" ? <Chip status={value as PaperStatus} /> : (name === "role" || name === "previousRole") ? roles[value as Role] ?? value : typeof value === "boolean" ? value ? "是" : "否" : value}
   </dd></>

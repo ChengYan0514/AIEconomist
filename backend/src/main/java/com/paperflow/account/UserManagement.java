@@ -1,6 +1,7 @@
 package com.paperflow.account;
 
 import com.paperflow.account.model.PlatformUser;
+import com.paperflow.account.model.PlatformUser.Status;
 import com.paperflow.account.model.Role;
 import com.paperflow.account.model.UserManagementException;
 import com.paperflow.audit.AuditLog;
@@ -17,7 +18,7 @@ import static com.paperflow.account.model.UserManagementException.Reason.*;
 
 public final class UserManagement {
     public record UserPage(List<PlatformUser> items, long total) {}
-    public record CreatedUser(PlatformUser user, String temporaryPassword) {}
+    public record IssuedPassword(PlatformUser user, String temporaryPassword) {}
 
     private final Accounts accounts;
     private final PasswordEncoder passwords;
@@ -39,33 +40,26 @@ public final class UserManagement {
         return new UserPage(accounts.list(search, role, enabled, offset, size), accounts.count(search, role, enabled));
     }
 
-    public CreatedUser create(String actor, String rawUsername, String rawName, Role role) {
+    public IssuedPassword create(String actor, String rawUsername, String rawName, Role role) {
         String username = Accounts.normalizeUsername(rawUsername);
         AccountService.validateUsername(username);
         String name = validateProfile(rawName, role);
-        byte[] secret = new byte[18];
-        random.nextBytes(secret);
-        String temporaryPassword = Base64.getUrlEncoder().withoutPadding().encodeToString(secret);
+        String temporaryPassword = temporaryPassword();
         String hash = passwords.encode(temporaryPassword);
         return transactions.execute(status -> {
             if (accounts.create(username, name, hash, role, true) != 1) {
                 throw new UserManagementException(USERNAME_TAKEN);
             }
             record(actor, "USER_CREATE", username, Map.of("displayName", name, "role", role));
-            return new CreatedUser(accounts.find(username), temporaryPassword);
+            return new IssuedPassword(accounts.find(username), temporaryPassword);
         });
     }
 
     public PlatformUser update(String actor, String username, String rawName, Role role) {
         String name = validateProfile(rawName, role);
         return transactions.execute(status -> {
-            accounts.lockManagement();
-            var current = accounts.find(username);
-            if (current == null) throw new UserManagementException(USER_NOT_FOUND);
-            if (current.enabled() && current.role() == Role.SYSTEM_ADMIN && role != Role.SYSTEM_ADMIN
-                    && accounts.enabledAdministrators() <= 1) {
-                throw new UserManagementException(LAST_SYSTEM_ADMIN);
-            }
+            var current = lockedUser(username);
+            if (role != Role.SYSTEM_ADMIN) requireOtherAdministrator(current);
             accounts.updateProfile(username, name, role);
             if (!current.displayName().equals(name)) {
                 record(actor, "USER_DISPLAY_NAME_CHANGE", username,
@@ -76,6 +70,50 @@ public final class UserManagement {
             }
             return accounts.find(username);
         });
+    }
+
+    public PlatformUser setStatus(String actor, String username, Status status) {
+        if (status == null) throw new IllegalArgumentException("请选择账号状态");
+        boolean enabling = status == Status.ACTIVE;
+        return transactions.execute(transaction -> {
+            var current = lockedUser(username);
+            if (current.enabled() == enabling) return current;
+            if (!enabling) requireOtherAdministrator(current);
+            accounts.setEnabled(username, enabling);
+            record(actor, enabling ? "USER_ENABLE" : "USER_DISABLE", username,
+                    Map.of("previousAccountStatus", enabling ? Status.DISABLED : Status.ACTIVE, "accountStatus", status));
+            return accounts.find(username);
+        });
+    }
+
+    public IssuedPassword resetPassword(String actor, String username) {
+        String temporaryPassword = temporaryPassword();
+        String hash = passwords.encode(temporaryPassword);
+        return transactions.execute(status -> {
+            var current = lockedUser(username);
+            accounts.resetPassword(username, hash);
+            record(actor, "USER_PASSWORD_RESET", username, Map.of("mustChangePassword", true));
+            return new IssuedPassword(current, temporaryPassword);
+        });
+    }
+
+    private PlatformUser lockedUser(String username) {
+        accounts.lockManagement();
+        var user = accounts.find(username);
+        if (user == null) throw new UserManagementException(USER_NOT_FOUND);
+        return user;
+    }
+
+    private void requireOtherAdministrator(PlatformUser user) {
+        if (user.enabled() && user.role() == Role.SYSTEM_ADMIN && accounts.enabledAdministrators() <= 1) {
+            throw new UserManagementException(LAST_SYSTEM_ADMIN);
+        }
+    }
+
+    private String temporaryPassword() {
+        byte[] secret = new byte[18];
+        random.nextBytes(secret);
+        return Base64.getUrlEncoder().withoutPadding().encodeToString(secret);
     }
 
     private void record(String actor, String action, String username, Map<String, Object> summary) {

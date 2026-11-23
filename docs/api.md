@@ -164,8 +164,14 @@ S123,2024,Example paper,Alice;Bob,files/paper.pdf
 | `GET /api/users` | 可选 `q`、`role`、`status`、`page`、`size` | `200`，用户分页，用户名升序 |
 | `POST /api/users` | JSON `username`、`displayName`、`role` | `201`，`{user, temporaryPassword}` |
 | `PATCH /api/users/{username}` | JSON `displayName`、`role` | `200`，更新后的用户 |
+| `PUT /api/users/{username}/status` | JSON `status` | `200`，当前用户 |
+| `POST /api/users/{username}/reset-password` | 无 | `200`，`{user, temporaryPassword}` |
 
-这些接口需要系统管理员权限。搜索同时匹配用户名和显示名称，忽略大小写。角色为 `SYSTEM_ADMIN`、`DATA_MAINTAINER` 或 `READ_ONLY`。状态为 `ACTIVE` 或 `DISABLED`。临时密码在创建响应中展示一次。用户名在创建时规范化，之后保持固定。最后一个启用的系统管理员改为其他角色时返回 `409 LAST_SYSTEM_ADMIN`。
+这些接口需要系统管理员权限。搜索同时匹配用户名和显示名称，忽略大小写。角色为 `SYSTEM_ADMIN`、`DATA_MAINTAINER` 或 `READ_ONLY`。状态为 `ACTIVE` 或 `DISABLED`。用户名在创建时规范化，之后保持固定。
+
+停用后旧会话返回 `401 AUTH_REQUIRED`，恢复后需要重新登录。停用保留该账号的任务记录，已提交的任务继续处理。将状态设置为当前值时直接返回当前用户。停用或降级最后一个启用的系统管理员会返回 `409 LAST_SYSTEM_ADMIN`。
+
+临时密码仅在成功创建或重置的响应中展示，并设置 `Cache-Control: no-store`。重置会撤销旧密码和会话。启用的用户需要用临时密码登录并设置个人密码，随后重新登录。停用期间依然可以生成临时密码，用户在账号恢复后登录。
 
 ## 系统状态
 
@@ -184,7 +190,7 @@ S123,2024,Example paper,Alice;Bob,files/paper.pdf
 
 论文 CSV 导出的动作是 `PAPER_CSV_EXPORT`，对象是 `PAPER_COLLECTION` 类型的 `papers`。服务器完成 CSV 写入与刷新后记录 `SUCCEEDED`，摘要包含导出行数、是否使用搜索词、归档视图以及已应用的来源 ID、年份范围和处理状态。请求字段无效或写入中断时记录 `FAILED`，摘要只包含错误代码。未登录的请求返回 `401`，已登录但未获准的导出请求返回 `403` 并记录 `DENIED`。审计摘要排除原始搜索词、正文、CSV 内容、密码、密钥和会话标识。
 
-用户创建、显示名称修改和角色变更分别记录为 `USER_CREATE`、`USER_DISPLAY_NAME_CHANGE` 和 `USER_ROLE_CHANGE`。对象类型为 `USER`，对象 ID 为该用户的固定用户名。摘要包含此次变更对应的资料与角色字段。
+用户创建、显示名称修改和角色变更分别记录为 `USER_CREATE`、`USER_DISPLAY_NAME_CHANGE` 和 `USER_ROLE_CHANGE`。停用、恢复和密码重置分别记录为 `USER_DISABLE`、`USER_ENABLE` 和 `USER_PASSWORD_RESET`。对象类型为 `USER`，对象 ID 为该用户的固定用户名。启停摘要记录前后状态，重置摘要只记录需要设置个人密码。
 
 ## 错误处理
 

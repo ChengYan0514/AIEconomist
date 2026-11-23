@@ -1,4 +1,4 @@
-import { StrictMode, useEffect } from "react"
+import { StrictMode, useEffect, useState } from "react"
 import { createRoot } from "react-dom/client"
 import { api, ApiError, useQuery } from "./api"
 import { AuditLog } from "./audit"
@@ -11,11 +11,12 @@ import { Library } from "./papers/library"
 import { PaperDetail } from "./papers/detail"
 import { Permissions, type Session } from "./permissions"
 import { SystemStatus } from "./system-status"
-import { Users } from "./users"
+import { ResetPasswordNotice, Users, type IssuedPassword } from "./users"
 import "./styles.css"
 
 function App() {
   const session = useQuery<Session>("/session")
+  const [reset, setReset] = useState<IssuedPassword>()
   const refresh = session.reload
   useEffect(() => {
     window.addEventListener("focus", refresh)
@@ -25,11 +26,12 @@ function App() {
       window.removeEventListener("sessionchange", refresh)
     }
   }, [refresh])
+  const resetNotice = reset && <ResetPasswordNotice issued={reset} close={() => setReset(undefined)} />
   const signedOut = session.error instanceof ApiError && session.error.status === 401
   if (session.loading && !session.data) return <div className="boot-screen"><Loading label="正在打开 AI Economist…" /></div>
   if (!session.data || signedOut) {
     const showError = session.error && !signedOut
-    return <Login serviceError={showError ? session.error?.message : undefined} />
+    return <><Login serviceError={showError ? session.error?.message : undefined} />{resetNotice}</>
   }
   const path = window.location.pathname.replace(/\/$/, "") || "/papers"
   const [section, id] = path.slice(1).split("/")
@@ -53,11 +55,11 @@ function App() {
     section === "jobs" ? id ? <JobDetail id={decodeURIComponent(id)} /> : <Jobs /> :
     section === "openalex" ? <OpenAlex /> :
     section === "system-status" && !id ? <SystemStatus /> :
-    section === "users" && !id ? <Users onChange={refresh} /> :
+    section === "users" && !id ? <Users onChange={refresh} onPasswordReset={(issued) => { setReset(issued); refresh() }} /> :
     section === "audit" && !id ? <AuditLog /> : <Empty title="找不到此页面"><a href="/papers" className="inline-link">返回论文库</a></Empty>
-  return <Permissions.Provider value={permissions}>
+  return <><Permissions.Provider value={permissions}>
     <Workspace page={path} displayName={session.data.displayName} logout={logout}>{page}</Workspace>
-  </Permissions.Provider>
+  </Permissions.Provider>{resetNotice}</>
 }
 
 createRoot(document.getElementById("root")!).render(<StrictMode><App /></StrictMode>)
