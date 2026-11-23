@@ -60,7 +60,7 @@ function ReviewDialog({ paperId, candidates, source, scopeSourceId, close }: Rev
     }
   }
 
-  return <Modal title="OpenAlex 候选复核" onClose={close} closeDisabled={busy}>
+  return <Modal title="OpenAlex 候选复核" description="并排核对本地书目与候选作品快照，确认准确关联。" onClose={close} closeDisabled={busy}>
     <div className="modal-body match-review form-stack">
       {local.error && <Notice error>{local.error.message}</Notice>}
       {local.loading && <Loading label="正在读取当前论文…" />}
@@ -90,20 +90,31 @@ function ReviewDialog({ paperId, candidates, source, scopeSourceId, close }: Rev
 }
 
 function Comparison({ paper, candidate, candidateSource }: { paper: Paper; candidate: Work; candidateSource: string }) {
-  const rows = [
-    ["标题", paper.title, candidate.title],
-    ["作者", authorLabel(paper.authors), authorLabel(candidate.authors)],
-    ["出版来源", sourceLabel(paper.sourceId, paper.sourceName), candidateSource],
-    ["发表年份", paper.year, candidate.year],
-    ["DOI", paper.doi, candidate.doi],
-    ["OpenAlex 作品 ID", paper.matchedWorkId || "未关联", candidate.workId],
+  const rows: [string, string | number | null | undefined, string | number | null | undefined, boolean][] = [
+    ["标题", paper.title, candidate.title, true],
+    ["作者", authorLabel(paper.authors), authorLabel(candidate.authors), true],
+    ["出版来源", sourceLabel(paper.sourceId, paper.sourceName), candidateSource, true],
+    ["发表年份", paper.year, candidate.year, true],
+    ["DOI", paper.doi, candidate.doi, true],
+    ["OpenAlex 作品 ID", paper.matchedWorkId || "未关联", candidate.workId, false],
   ]
-  return <table className="data-table match-review-table">
-    <thead><tr><th scope="col">字段</th><th scope="col">当前本地书目</th><th scope="col">匹配候选快照</th></tr></thead>
-    <tbody>{rows.map(([field, local, work]) => <tr key={field}>
-      <th scope="row">{field}</th><td>{local || "未登记"}</td><td>{work || "未登记"}</td>
-    </tr>)}</tbody>
-  </table>
+  return <div className="match-review-frame">
+    <table className="data-table match-review-table">
+      <thead><tr><th scope="col">字段</th><th scope="col">当前本地书目</th><th scope="col">匹配候选快照</th></tr></thead>
+      <tbody>{rows.map(([field, local, work, checkDiff]) => {
+        const differs = checkDiff && normalize(local) !== normalize(work)
+        return <tr key={field} data-diff={differs ? "true" : undefined}>
+          <th scope="row">{field}</th>
+          <td>{local || "未登记"}</td>
+          <td>{work || "未登记"}</td>
+        </tr>
+      })}</tbody>
+    </table>
+  </div>
+}
+
+function normalize(value: string | number | null | undefined) {
+  return String(value ?? "").trim().toLowerCase()
 }
 
 function authorLabel(authors: string | null) {

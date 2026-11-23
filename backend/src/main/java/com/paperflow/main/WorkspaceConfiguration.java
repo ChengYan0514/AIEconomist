@@ -20,6 +20,8 @@ import com.paperflow.openalex.OpenAlexService;
 import com.paperflow.openalex.OpenAlexStore;
 import com.paperflow.original.OriginalArchive;
 import com.paperflow.original.OriginalImports;
+import com.paperflow.paper.journal.JournalService;
+import com.paperflow.paper.journal.JournalStore;
 import com.paperflow.paper.manage.PaperService;
 import com.paperflow.paper.manage.PaperStore;
 import org.springframework.context.annotation.Bean;
@@ -38,6 +40,11 @@ class WorkspaceConfiguration {
     PaperService paperService(PaperStore store, FileStorage files, TransactionTemplate transactions,
                               WorkspaceProperties config, AuditLog audit) {
         return new PaperService(store, files, transactions, config.openalexSchema(), audit);
+    }
+
+    @Bean
+    JournalService journalService(JournalStore store, WorkspaceProperties config) {
+        return new JournalService(store, config.openalexSchema());
     }
 
     @Bean

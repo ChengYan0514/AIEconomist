@@ -1,3 +1,4 @@
+import { RefreshCw, Server } from "lucide-react"
 import { useQuery } from "./api"
 import { Notice } from "./components/shared"
 import { Button } from "./components/ui/button"
@@ -42,15 +43,19 @@ export function SystemStatus() {
   const configuration = data?.configuration
 
   return <>
-    <SectionHeader title="系统状态" />
-    <div className="mb-3 flex flex-wrap items-center gap-4">
-      <Button type="button" onClick={reload} disabled={loading}>{loading ? "正在检查…" : "重新检查"}</Button>
-      <span className="muted text-sm" aria-live="polite">
-        {lastCheckedAt ? <>上次检查 <CheckedTime value={lastCheckedAt} /></> : "尚未取得检查结果"}
-      </span>
-    </div>
-    {error && <Notice error>{data ? "刷新失败，当前显示上次检查结果。" : "检查失败，请稍后重试。"}</Notice>}
-    <div className="panel" aria-busy={loading}>
+    <SectionHeader title="系统状态" description="核验数据库、MinerU 解析服务、文件存储与 OpenAlex 快照的实时可用性。"
+      actions={<Button type="button" onClick={reload} disabled={loading}>
+        <RefreshCw size={15} className={loading ? "animate-spin" : undefined} aria-hidden="true" />
+        {loading ? "正在检查…" : "重新检查"}
+      </Button>} />
+    {error && <div className="mb-4"><Notice error>{data ? "刷新失败，当前显示上次检查结果。" : "检查失败，请稍后重试。"}</Notice></div>}
+    <section className="panel" aria-busy={loading}>
+      <div className="panel-bar">
+        <div className="panel-title"><Server size={17} strokeWidth={1.7} aria-hidden="true" /><strong>核心服务依赖</strong></div>
+        <span className="muted text-sm tabular-nums" aria-live="polite">
+          {lastCheckedAt ? <>上次检查 <CheckedTime value={lastCheckedAt} /></> : "尚未取得检查结果"}
+        </span>
+      </div>
       <div className="table-scroll" role="region" aria-label="依赖状态" tabIndex={0}>
         <table className="data-table system-status-table" aria-label="依赖检查结果">
           <thead><tr><th scope="col">依赖</th><th scope="col">状态</th><th scope="col">检查结果</th><th scope="col">检查时间</th></tr></thead>
@@ -66,14 +71,17 @@ export function SystemStatus() {
           })}</tbody>
         </table>
       </div>
-    </div>
-    <section className="mt-8" aria-labelledby="effective-configuration">
-      <h2 id="effective-configuration" className="mb-3 text-xl font-semibold">有效配置</h2>
+    </section>
+    <section className="mt-7" aria-labelledby="effective-configuration">
+      <div className="overview-heading">
+        <h2 id="effective-configuration">有效配置</h2>
+        <span>当前部署生效的只读配额与版本信息</span>
+      </div>
       <dl className="panel system-status-configuration">
-        <dt>应用版本</dt><dd>{configuration?.version ?? "—"}</dd>
-        <dt>单文件上限</dt><dd>{byteLimit(configuration?.maxOriginalBytes)}</dd>
-        <dt>ZIP 上限</dt><dd>{byteLimit(configuration?.maxZipBytes)}</dd>
-        <dt>每任务论文上限</dt><dd>{configuration ? configuration.maxJobTargets.toLocaleString("zh-CN") + " 篇" : "—"}</dd>
+        <div className="config-cell"><dt>应用版本</dt><dd className="mono">{configuration?.version ?? "—"}</dd></div>
+        <div className="config-cell"><dt>单文件上限</dt><dd className="tabular-nums">{byteLimit(configuration?.maxOriginalBytes)}</dd></div>
+        <div className="config-cell"><dt>ZIP 上限</dt><dd className="tabular-nums">{byteLimit(configuration?.maxZipBytes)}</dd></div>
+        <div className="config-cell"><dt>每任务论文上限</dt><dd className="tabular-nums">{configuration ? configuration.maxJobTargets.toLocaleString("zh-CN") + " 篇" : "—"}</dd></div>
       </dl>
     </section>
   </>

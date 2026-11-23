@@ -1,10 +1,11 @@
-import { Archive, ArrowLeft, BookOpen, ClipboardList, Database, Download, ExternalLink, FileText, Pencil, RotateCcw, ScanText, UploadCloud } from "lucide-react"
+import { Archive, ArrowLeft, BookOpen, Check, ClipboardList, Copy, Database, Download, ExternalLink, FileText, ListTree, Pencil, RotateCcw, ScanText, UploadCloud } from "lucide-react"
 import { useState } from "react"
 import { api, dateLabel, errorMessage, jobPath, paperPath, params, useQuery } from "../api"
 import { Chip, Empty, JobChip, Loading, Modal, Notice, Pagination, jobKinds } from "../components/shared"
 import { Button } from "../components/ui/button"
 import { SectionHeader } from "../components/workspace"
 import { usePermissions } from "../permissions"
+import { navigate } from "../router"
 import type { Job, JobKind, Page, Paper, PaperBlock, PaperJobRecord } from "../types"
 import { MetadataForm, ReplaceOriginal } from "./forms"
 
@@ -39,7 +40,7 @@ export function PaperDetail({ id }: { id: string }) {
     setBusy(true); setError("")
     try {
       const job = await api<Job>("/jobs", { method: "POST", body: JSON.stringify({ kind, paperIds: [id] }) })
-      window.location.assign(jobPath(job.jobId))
+      navigate(jobPath(job.jobId))
     } catch (cause) { setError(errorMessage(cause)) }
     finally { setBusy(false) }
   }
@@ -51,35 +52,41 @@ export function PaperDetail({ id }: { id: string }) {
   const canPublish = paper.status === "READY" || (paper.latestParseId && paper.latestParseId !== paper.publishedParseId)
   const safeUrl = paper.url && /^https?:\/\//i.test(paper.url) ? paper.url : null
   return <>
-    <SectionHeader title={paper.title || paper.paperId} description={paper.authors?.replaceAll(";", " · ") || "作者未登记"}
-      back={<a href="/papers" className="back-link"><ArrowLeft size={15} />返回论文库</a>}
+    <SectionHeader editorial title={paper.title || paper.paperId} description={paper.authors?.replaceAll(";", " · ") || "作者未登记"}
+      back={<div className="flex flex-wrap items-center gap-x-4">
+        <a href="/papers" className="back-link"><ArrowLeft size={14} aria-hidden="true" />返回论文库</a>
+        {paper.sourceId && <a href={"/journals" + params({ journal: paper.sourceId })} className="back-link">查看所属期刊</a>}
+      </div>}
       actions={<>
-        {canWrite && !paper.archived && <Button type="button" variant="outline" onClick={() => setDialog("edit")}><Pencil size={16} />编辑书目</Button>}
-        {canWrite && !paper.archived && !canReadContent && <Button type="button" variant="outline" onClick={() => setDialog("replace")}><UploadCloud size={16} />更换原件</Button>}
-        {canWrite && <Button type="button" variant="outline" onClick={() => setDialog("archive")}>{paper.archived ? <RotateCcw size={16} /> : <Archive size={16} />}{paper.archived ? "恢复论文" : "归档"}</Button>}
+        {canWrite && !paper.archived && <Button type="button" variant="outline" onClick={() => setDialog("edit")}><Pencil size={15} aria-hidden="true" />编辑书目</Button>}
+        {canWrite && !paper.archived && !canReadContent && <Button type="button" variant="outline" onClick={() => setDialog("replace")}><UploadCloud size={15} aria-hidden="true" />更换原件</Button>}
+        {canWrite && <Button type="button" variant="outline" onClick={() => setDialog("archive")}>{paper.archived ? <RotateCcw size={15} aria-hidden="true" /> : <Archive size={15} aria-hidden="true" />}{paper.archived ? "恢复论文" : "归档"}</Button>}
       </>} />
     {error && dialog !== "archive" && <Notice error>{error}</Notice>}
     {paper.archived && <Notice>此论文已归档。恢复后可以继续处理。</Notice>}
     <div className="detail-grid">
       <section className="panel detail-body">
-        <div className="panel-tabs detail-tabs" role="group" aria-label="论文详情">
-          <button type="button" aria-pressed={activeTab === "metadata"} onClick={() => setTab("metadata")}><FileText size={16} />书目信息</button>
-          {canReadContent && <button type="button" aria-pressed={activeTab === "file"} onClick={() => setTab("file")}><Download size={16} />原始文件</button>}
-          {canReadContent && <button type="button" aria-pressed={activeTab === "text"} onClick={() => setTab("text")}><BookOpen size={16} />全文阅读</button>}
-          {canReadHistory && <button type="button" aria-pressed={activeTab === "history"} onClick={() => setTab("history")}><ClipboardList size={16} />处理记录</button>}
+        <div className="underline-tabs detail-tabs" role="group" aria-label="论文详情">
+          <button type="button" aria-pressed={activeTab === "metadata"} onClick={() => setTab("metadata")}><FileText size={15} aria-hidden="true" />书目信息</button>
+          {canReadContent && <button type="button" aria-pressed={activeTab === "file"} onClick={() => setTab("file")}><Download size={15} aria-hidden="true" />原始文件</button>}
+          {canReadContent && <button type="button" aria-pressed={activeTab === "text"} onClick={() => setTab("text")}><BookOpen size={15} aria-hidden="true" />全文阅读</button>}
+          {canReadHistory && <button type="button" aria-pressed={activeTab === "history"} onClick={() => setTab("history")}><ClipboardList size={15} aria-hidden="true" />处理记录</button>}
         </div>
         {activeTab === "metadata" && <dl className="metadata-grid">
-          <div><dt>出版来源</dt><dd>{paper.sourceName || paper.sourceId || "—"}{paper.sourceName && <small>{paper.sourceId}</small>}</dd></div>
-          <div><dt>发表年份</dt><dd>{paper.year ?? "—"}</dd></div>
-          <div><dt>DOI</dt><dd>{paper.doi || "—"}</dd></div>
+          <div><dt>出版来源</dt><dd>
+            {paper.sourceId ? <a className="inline-link" href={"/journals" + params({ journal: paper.sourceId })}>{paper.sourceName || paper.sourceId}</a> : "—"}
+            {paper.sourceName && paper.sourceId && <small className="mono">{paper.sourceId}</small>}
+          </dd></div>
+          <div><dt>发表年份</dt><dd className="tabular-nums">{paper.year ?? "—"}</dd></div>
+          <div><dt>DOI</dt><dd className="copyable-value">{paper.doi ? <><span className="mono">{paper.doi}</span><CopyButton value={paper.doi} label="复制 DOI" /></> : "—"}</dd></div>
           <div><dt>采集平台</dt><dd>{paper.provider || "—"}</dd></div>
-          <div className="span-two"><dt>论文 ID</dt><dd className="mono break-all">{paper.paperId}</dd></div>
-          <div className="span-two"><dt>原始链接</dt><dd>{safeUrl ? <a href={safeUrl} target="_blank" rel="noreferrer" className="inline-link">访问原始页面 <ExternalLink size={14} /></a> : "—"}</dd></div>
+          <div className="span-two"><dt>论文 ID</dt><dd className="copyable-value"><code className="id-plate mono break-all">{paper.paperId}</code><CopyButton value={paper.paperId} label="复制论文 ID" /></dd></div>
+          <div className="span-two"><dt>原始链接</dt><dd>{safeUrl ? <a href={safeUrl} target="_blank" rel="noreferrer" className="inline-link">访问原始页面 <ExternalLink size={14} aria-hidden="true" /></a> : "—"}</dd></div>
         </dl>}
         {activeTab === "file" && <div className="original-panel">
-          <div className="original-heading"><div><FileText size={19} /><span title={paper.originalName || undefined}>{paper.originalName || "未登记原件"}</span></div><div className="flex flex-wrap gap-2">
-            {paper.hasOriginal && <Button asChild variant="outline" size="sm"><a href={"/api" + path + "/file"} target="_blank" rel="noreferrer"><Download size={15} />打开原件</a></Button>}
-            {canWrite && !paper.archived && <Button type="button" variant="outline" size="sm" onClick={() => setDialog("replace")}><UploadCloud size={15} />更换原件</Button>}
+          <div className="original-heading"><div><FileText size={17} aria-hidden="true" /><span title={paper.originalName || undefined}>{paper.originalName || "未登记原件"}</span></div><div className="flex flex-wrap gap-2">
+            {paper.hasOriginal && <Button asChild variant="outline" size="sm"><a href={"/api" + path + "/file"} target="_blank" rel="noreferrer"><Download size={14} aria-hidden="true" />打开原件</a></Button>}
+            {canWrite && !paper.archived && <Button type="button" variant="outline" size="sm" onClick={() => setDialog("replace")}><UploadCloud size={14} aria-hidden="true" />更换原件</Button>}
           </div></div>
           {!paper.hasOriginal ? <Empty title="原件当前不可读取">历史正文仍可在全文阅读中查阅。</Empty> :
             paper.originalType === "PDF" ? <iframe key={paper.revision} className="pdf-preview" src={"/api" + path + "/file"} title="论文 PDF 原件" /> :
@@ -90,16 +97,20 @@ export function PaperDetail({ id }: { id: string }) {
       </section>
       <aside className="detail-aside">
         <section className="panel detail-card">
-          <div className="detail-card-title"><ScanText size={18} /><h2>全文处理</h2><Chip status={paper.status} /></div>
-          <div className="small-facts"><div><span>当前原件</span><strong>{paper.originalType || "—"}</strong></div><div><span>最近更新</span><strong>{dateLabel(paper.updatedAt)}</strong></div></div>
+          <div className="detail-card-title"><ScanText size={16} strokeWidth={1.7} aria-hidden="true" /><h2>全文处理</h2><Chip status={paper.status} /></div>
+          <div className="small-facts">
+            <div><span>当前原件</span><strong className="mono">{paper.originalType || "—"}</strong></div>
+            <div><span>原件修订</span><strong className="tabular-nums">Rev. {paper.revision}</strong></div>
+            <div><span>最近更新</span><strong className="tabular-nums">{dateLabel(paper.updatedAt)}</strong></div>
+          </div>
           {!paper.archived && (canJob("PARSE") || canJob("PUBLISH")) && <div className="card-actions">
-            {canJob("PARSE") && <Button type="button" variant={canPublish ? "outline" : "default"} disabled={busy || !paper.hasOriginal || paper.originalType !== "PDF"} onClick={() => start("PARSE")}><ScanText size={16} />{paper.status === "PUBLISHED" || paper.latestParseId ? "重新解析" : "开始解析"}</Button>}
-            {canJob("PUBLISH") && <Button type="button" variant={canPublish ? "default" : "outline"} disabled={busy || !canPublish} onClick={() => start("PUBLISH")}><BookOpen size={16} />导入全文</Button>}
+            {canJob("PARSE") && <Button type="button" variant={canPublish ? "outline" : "default"} disabled={busy || !paper.hasOriginal || paper.originalType !== "PDF"} onClick={() => start("PARSE")}><ScanText size={15} aria-hidden="true" />{paper.status === "PUBLISHED" || paper.latestParseId ? "重新解析" : "开始解析"}</Button>}
+            {canJob("PUBLISH") && <Button type="button" variant={canPublish ? "default" : "outline"} disabled={busy || !canPublish} onClick={() => start("PUBLISH")}><BookOpen size={15} aria-hidden="true" />导入全文</Button>}
           </div>}
         </section>
         <section className="panel detail-card">
-          <div className="detail-card-title"><Database size={18} /><h2>OpenAlex 关联</h2></div>
-          {paper.matchedWorkId ? <div className="info-box"><strong>已关联</strong><code>{paper.matchedWorkId}</code></div> :
+          <div className="detail-card-title"><Database size={16} strokeWidth={1.7} aria-hidden="true" /><h2>OpenAlex 关联</h2></div>
+          {paper.matchedWorkId ? <div className="info-box"><strong>已关联</strong><code className="mono">{paper.matchedWorkId}</code></div> :
             <p className="muted text-sm leading-relaxed">可以使用所选期刊的作品元数据匹配此论文。</p>}
           {canJob("MATCH") && !paper.archived && !paper.matchedWorkId && <Button className="mt-3 w-full" type="button" variant="outline" disabled={busy} onClick={() => start("MATCH")}>匹配论文</Button>}
         </section>
@@ -115,6 +126,20 @@ export function PaperDetail({ id }: { id: string }) {
       </div>
     </Modal>}
   </>
+}
+
+function CopyButton({ value, label }: { value: string; label: string }) {
+  const [copied, setCopied] = useState(false)
+  async function copy() {
+    try {
+      await navigator.clipboard.writeText(value)
+      setCopied(true)
+      window.setTimeout(() => setCopied(false), 1600)
+    } catch {}
+  }
+  return <button type="button" className="copy-icon-btn" aria-label={label} title={copied ? "已复制" : label} onClick={copy}>
+    {copied ? <Check size={13} aria-hidden="true" /> : <Copy size={13} aria-hidden="true" />}
+  </button>
 }
 
 function PaperHistory({ path, legacy }: { path: string; legacy: boolean }) {
@@ -154,14 +179,81 @@ function Reader({ path, revision }: { path: string; revision: number }) {
   if (blocks.error) return <div className="p-5"><Notice error>{blocks.error.message}</Notice></div>
   if (!blocks.data) return <Loading label="正在加载全文…" />
   if (!blocks.data.total) return <Empty title="还没有可阅读的全文">{canJob("PUBLISH") && "解析完成后，使用「导入全文」发布内容。"}</Empty>
+
+  const items = blocks.data.items
+  const headings = items.filter((block) => block.type === "title" && block.text)
+
   return <>
-    <article className="reader-content">
-      {blocks.data.items.map((block) => <section key={block.sequence} className={"reader-block block-" + block.type}>
-        <span className="page-mark">页 {block.page + 1}</span>
-        {block.type === "title" ? <h3>{block.text}</h3> : block.text && <p>{block.text}</p>}
-        {block.hasAsset && <img loading="lazy" src={"/api" + path + "/blocks/" + block.sequence + "/asset"} alt={block.type === "table" ? "论文表格" : "论文图像"} />}
-      </section>)}
-    </article>
+    <div className="reader-toolbar">
+      <span>已发布结构化全文</span>
+      <span className="mono">共 {blocks.data.total.toLocaleString()} 个内容块 · 本页 {items.length} 块</span>
+    </div>
+    <div className={"reader-shell" + (headings.length > 0 ? " has-outline" : "")}>
+      {headings.length > 0 && <nav className="reader-outline" aria-label="本页章节目录">
+        <div className="reader-outline-head"><ListTree size={14} aria-hidden="true" /><span>章节大纲</span></div>
+        <ul>
+          {headings.map((heading) => {
+            const level = Number(heading.attributes?.title_level ?? heading.attributes?.text_level ?? 1)
+            return <li key={heading.sequence} data-level={Math.min(Math.max(level, 1), 3)}>
+              <a href={"#block-" + heading.sequence} onClick={(event) => {
+                event.preventDefault()
+                document.getElementById("block-" + heading.sequence)?.scrollIntoView({ behavior: "smooth", block: "start" })
+              }}>{heading.text}</a>
+            </li>
+          })}
+        </ul>
+      </nav>}
+      <article className="reader-content">
+        {items.map((block) => <ReaderBlock key={block.sequence} path={path} block={block} />)}
+      </article>
+    </div>
     <Pagination page={page} size={size} total={blocks.data.total} change={setPage} />
   </>
+}
+
+function ReaderBlock({ path, block }: { path: string; block: PaperBlock }) {
+  const attrs = block.attributes ?? {}
+  const caption = textAttr(attrs, "table_caption", "image_caption", "caption")
+  const footnote = textAttr(attrs, "table_footnote", "image_footnote", "footnote")
+  const footnoteLabel = textAttr(attrs, "footnote_label")
+  const eqFormat = textAttr(attrs, "format")
+  const level = Number(attrs.title_level ?? attrs.text_level ?? 1)
+
+  return <section id={"block-" + block.sequence} className={"reader-block block-" + block.type}>
+    <span className="page-mark">页 {block.page + 1}</span>
+    {block.type === "title" ? (
+      level >= 2 ? <h4 className="reader-subheading">{block.text}</h4> : <h3>{block.text}</h3>
+    ) : block.type === "equation" ? (
+      <div className="block-equation-frame">
+        {eqFormat && <span className="block-kind-tag">{eqFormat}</span>}
+        {block.text && <code className="mono">{block.text}</code>}
+      </div>
+    ) : block.type === "footnote" ? (
+      <p className="block-footnote-text">
+        {footnoteLabel && <strong className="mono mr-1.5">[{footnoteLabel}]</strong>}
+        {block.text}
+      </p>
+    ) : block.type === "reference" ? (
+      <p className="block-reference-text">{block.text}</p>
+    ) : (
+      block.text && <p>{block.text}</p>
+    )}
+    {block.hasAsset && <figure className="reader-figure">
+      {caption && <figcaption className="reader-caption">{caption}</figcaption>}
+      <img loading="lazy" src={"/api" + path + "/blocks/" + block.sequence + "/asset"} alt={block.type === "table" ? "论文表格" : "论文图像"} />
+      {footnote && <div className="reader-figure-note">{footnote}</div>}
+    </figure>}
+  </section>
+}
+
+function textAttr(attrs: Record<string, unknown>, ...keys: string[]): string | null {
+  for (const key of keys) {
+    const value = attrs[key]
+    if (typeof value === "string" && value.trim()) return value.trim()
+    if (Array.isArray(value)) {
+      const joined = value.filter((item): item is string => typeof item === "string" && Boolean(item.trim())).join(" ")
+      if (joined) return joined
+    }
+  }
+  return null
 }

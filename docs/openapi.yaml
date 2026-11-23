@@ -277,6 +277,39 @@ paths:
         '403': {$ref: '#/components/responses/Error'}
         '404': {$ref: '#/components/responses/Error', description: ROLE_NOT_FOUND}
         '409': {$ref: '#/components/responses/Error', description: BUILT_IN_ROLE 或 ROLE_IN_USE}
+  /journals:
+    get:
+      operationId: listJournals
+      description: 需要 PAPER_READ。按出版来源聚合未归档论文统计，并附带全库期刊概览。
+      parameters:
+        - {name: q, in: query, schema: {type: string, maxLength: 200}}
+        - {name: filter, in: query, schema: {$ref: '#/components/schemas/JournalFilterMode'}}
+        - {name: sort, in: query, schema: {$ref: '#/components/schemas/JournalSort'}}
+        - {$ref: '#/components/parameters/Page'}
+        - {$ref: '#/components/parameters/Size'}
+      responses:
+        '200':
+          description: 期刊目录分页与全库概览
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/JournalDirectory'}
+        '400': {$ref: '#/components/responses/Error'}
+        '403': {$ref: '#/components/responses/Error'}
+  /journals/{sourceId}:
+    get:
+      operationId: getJournal
+      description: 需要 PAPER_READ。返回指定出版来源的统计摘要、本地已导入 OpenAlex 作品数以及按年份分布。
+      parameters:
+        - {name: sourceId, in: path, required: true, schema: {type: string}}
+      responses:
+        '200':
+          description: 期刊详情与年度分布
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/JournalDetail'}
+        '400': {$ref: '#/components/responses/Error'}
+        '403': {$ref: '#/components/responses/Error'}
+        '404': {$ref: '#/components/responses/Error', description: JOURNAL_NOT_FOUND}
   /papers:
     get:
       operationId: listPapers
@@ -956,6 +989,71 @@ components:
         doi: {type: [string, 'null'], description: 规范化后最多 500 个字符}
         url: {type: [string, 'null'], description: 规范化后最多 2000 个字符的 HTTP 或 HTTPS 地址}
         provider: {type: [string, 'null'], description: 规范化后最多 255 个字符}
+    JournalFilterMode:
+      type: string
+      enum: [ALL, HAS_FAILED, HAS_PENDING, ALL_PUBLISHED]
+    JournalSort:
+      type: string
+      enum: [PAPERS_DESC, PUBLISHED_RATE_DESC, FAILED_DESC, PENDING_DESC, UPDATED_DESC, NAME_ASC]
+    CorpusJournalOverview:
+      type: object
+      required: [totalJournals, totalPapers, publishedPapers, matchedPapers, failedPapers, yearMin, yearMax]
+      properties:
+        totalJournals: {type: integer, format: int64}
+        totalPapers: {type: integer, format: int64}
+        publishedPapers: {type: integer, format: int64}
+        matchedPapers: {type: integer, format: int64}
+        failedPapers: {type: integer, format: int64}
+        yearMin: {type: [integer, 'null']}
+        yearMax: {type: [integer, 'null']}
+    JournalSummary:
+      type: object
+      required: [sourceId, name, totalPapers, archivedPapers, publishedCount, readyCount, unprocessedCount, failedCount, unsupportedCount, matchedCount, yearMin, yearMax, latestUpdatedAt]
+      properties:
+        sourceId: {type: string}
+        name: {type: string}
+        totalPapers: {type: integer, format: int64}
+        archivedPapers: {type: integer, format: int64}
+        publishedCount: {type: integer, format: int64}
+        readyCount: {type: integer, format: int64}
+        unprocessedCount: {type: integer, format: int64}
+        failedCount: {type: integer, format: int64}
+        unsupportedCount: {type: integer, format: int64}
+        matchedCount: {type: integer, format: int64}
+        yearMin: {type: [integer, 'null']}
+        yearMax: {type: [integer, 'null']}
+        latestUpdatedAt: {type: [string, 'null'], format: date-time}
+    JournalDirectory:
+      allOf:
+        - {$ref: '#/components/schemas/Page'}
+        - type: object
+          required: [summary]
+          properties:
+            items:
+              type: array
+              items: {$ref: '#/components/schemas/JournalSummary'}
+            summary: {$ref: '#/components/schemas/CorpusJournalOverview'}
+    JournalYearStats:
+      type: object
+      required: [year, total, published, ready, unprocessed, failed, unsupported, matched]
+      properties:
+        year: {type: integer}
+        total: {type: integer, format: int64}
+        published: {type: integer, format: int64}
+        ready: {type: integer, format: int64}
+        unprocessed: {type: integer, format: int64}
+        failed: {type: integer, format: int64}
+        unsupported: {type: integer, format: int64}
+        matched: {type: integer, format: int64}
+    JournalDetail:
+      type: object
+      required: [journal, importedWorksCount, years]
+      properties:
+        journal: {$ref: '#/components/schemas/JournalSummary'}
+        importedWorksCount: {type: integer, format: int64}
+        years:
+          type: array
+          items: {$ref: '#/components/schemas/JournalYearStats'}
     PaperStatus:
       type: string
       enum: [UNPROCESSED, READY, PUBLISHED, FAILED, UNSUPPORTED]

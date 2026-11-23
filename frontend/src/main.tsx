@@ -2,8 +2,10 @@ import { StrictMode, useEffect, useState } from "react"
 import { createRoot } from "react-dom/client"
 import { api, ApiError, useQuery } from "./api"
 import { AuditLog } from "./audit"
+import { CausalGraphPreview } from "./causal"
 import { Empty, Loading } from "./components/shared"
 import { Workspace } from "./components/workspace"
+import { Journals } from "./journals"
 import { FirstPassword, Login } from "./login"
 import { Jobs, JobDetail } from "./jobs"
 import { OpenAlex } from "./openalex"
@@ -12,11 +14,14 @@ import { Library } from "./papers/library"
 import { PaperDetail } from "./papers/detail"
 import { Permissions, type Session } from "./permissions"
 import { Roles } from "./roles"
+import { useLinkInterceptor, useLocation } from "./router"
 import { SystemStatus } from "./system-status"
 import { ResetPasswordNotice, Users, type IssuedPassword } from "./users"
 import "./styles.css"
 
 function App() {
+  useLinkInterceptor()
+  const location = useLocation()
   const session = useQuery<Session>("/session")
   const [reset, setReset] = useState<IssuedPassword>()
   const refresh = session.reload
@@ -35,7 +40,7 @@ function App() {
     const showError = session.error && !signedOut
     return <><Login serviceError={showError ? session.error?.message : undefined} />{resetNotice}</>
   }
-  const path = window.location.pathname.replace(/\/$/, "") || "/overview"
+  const path = location.pathname.replace(/\/$/, "") || "/overview"
   const [section, id, action] = path.slice(1).split("/")
   async function logout() {
     try { await api("/session", { method: "DELETE" }); window.location.assign("/") }
@@ -44,7 +49,7 @@ function App() {
   if (session.data.mustChangePassword) return <FirstPassword logout={logout} />
 
   const permissions = session.data.permissions
-  const required = section === "papers" ? "PAPER_READ" :
+  const required = section === "papers" || section === "journals" ? "PAPER_READ" :
     section === "jobs" ? "JOB_READ" :
     section === "openalex" ? "OPENALEX_MANAGE" :
     ["system-status", "users", "roles", "audit"].includes(section) ? "SYSTEM_MANAGE" : undefined
@@ -54,12 +59,14 @@ function App() {
     <h1>无权访问此页面</h1><a href="/overview" className="inline-link">返回总览</a>
   </section> :
     section === "overview" && !id ? <Overview /> :
-    section === "papers" ? id ? <PaperDetail id={decodeURIComponent(id)} /> : <Library /> :
-    section === "jobs" ? id ? <JobDetail id={decodeURIComponent(id)} /> : <Jobs /> :
+    section === "journals" && !id ? <Journals /> :
+    section === "papers" ? id ? <PaperDetail key={id} id={decodeURIComponent(id)} /> : <Library /> :
+    section === "jobs" ? id ? <JobDetail key={id} id={decodeURIComponent(id)} /> : <Jobs /> :
     section === "openalex" ? <OpenAlex /> :
+    section === "causal-graph" && !id ? <CausalGraphPreview /> :
     section === "system-status" && !id ? <SystemStatus /> :
     section === "users" && !id ? <Users onChange={refresh} onPasswordReset={(issued) => { setReset(issued); refresh() }} /> :
-    section === "roles" ? <Roles id={id && id !== "new" ? decodeURIComponent(id) : undefined} editing={id === "new" || action === "edit"} /> :
+    section === "roles" ? <Roles key={path} id={id && id !== "new" ? decodeURIComponent(id) : undefined} editing={id === "new" || action === "edit"} /> :
     section === "audit" && !id ? <AuditLog /> : <Empty title="找不到此页面"><a href="/overview" className="inline-link">返回总览</a></Empty>
   return <><Permissions.Provider value={permissions}>
     <Workspace page={path} displayName={session.data.displayName} logout={logout}>{page}</Workspace>

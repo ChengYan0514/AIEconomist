@@ -5,6 +5,7 @@ import com.paperflow.account.model.RoleManagementException;
 import com.paperflow.audit.model.AuditEventNotFound;
 import com.paperflow.job.JobConflict;
 import com.paperflow.job.JobNotFound;
+import com.paperflow.paper.journal.JournalNotFound;
 import com.paperflow.paper.model.PaperConflict;
 import com.paperflow.paper.model.PaperNotFound;
 import org.slf4j.Logger;
@@ -50,6 +51,11 @@ public class ApiErrors {
     @ExceptionHandler(PaperNotFound.class)
     public ResponseEntity<Error> paperNotFound(PaperNotFound error) {
         return response(HttpStatus.NOT_FOUND, code(error), error.getMessage());
+    }
+
+    @ExceptionHandler(JournalNotFound.class)
+    public ResponseEntity<Error> journalNotFound(JournalNotFound error) {
+        return response(HttpStatus.NOT_FOUND, "JOURNAL_NOT_FOUND", error.getMessage());
     }
 
     @ExceptionHandler(JobNotFound.class)

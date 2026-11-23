@@ -38,13 +38,14 @@ export function Users({ onChange, onPasswordReset }: { onChange: () => void; onP
   }
 
   return <>
-    <SectionHeader title="用户管理" actions={<Button disabled={!roles.length} onClick={() => setEditing("new")}><Plus size={17} />新建用户</Button>} />
+    <SectionHeader title="用户管理" description="开通平台账号、分配业务角色，按需停用账号或签发一次性临时密码。"
+      actions={<Button disabled={!roles.length} onClick={() => setEditing("new")}><Plus size={16} aria-hidden="true" />新建用户</Button>} />
     {catalog.error && <div className="mb-4">
       <Notice error>{catalog.error.message}</Notice>
       <Button className="mt-3" variant="outline" onClick={catalog.reload}>重新加载角色</Button>
     </div>}
-    <form className="user-filters" onSubmit={search}>
-      <label className="search-box"><Search size={17} />
+    <form className="panel filter-deck user-filters" onSubmit={search}>
+      <label className="search-box"><Search size={16} aria-hidden="true" />
         <input className="field" name="q" type="search" aria-label="搜索用户" maxLength={100} defaultValue={filters.q}
           placeholder="搜索用户名或显示名称" />
       </label>
@@ -63,15 +64,15 @@ export function Users({ onChange, onPasswordReset }: { onChange: () => void; onP
               <thead><tr><th scope="col">用户</th><th scope="col">角色</th><th scope="col">状态</th>
                 <th scope="col">创建时间</th><th scope="col">操作</th></tr></thead>
               <tbody>{rows.map((user) => <tr key={user.username}>
-                <td className="title-cell"><strong>{user.displayName}</strong><small>{user.username}</small></td>
-                <td>{roleNames.get(user.role) ?? user.role}</td>
+                <td className="title-cell"><strong>{user.displayName}</strong><small className="mono">{user.username}</small></td>
+                <td><span className="role-pill">{roleNames.get(user.role) ?? user.role}</span></td>
                 <td><span className={"status-chip status-" + (user.status === "ACTIVE" ? "green" : "neutral")}>
-                  <span className="status-dot" />{user.status === "ACTIVE" ? "启用" : "停用"}
+                  <span className="status-dot" aria-hidden="true" />{user.status === "ACTIVE" ? "启用" : "停用"}
                 </span></td>
                 <td className="table-date"><time dateTime={user.createdAt}>
                   {new Date(user.createdAt).toLocaleString("zh-CN", { hour12: false })}
                 </time></td>
-                <td><div className="flex flex-wrap gap-1">
+                <td><div className="row-actions">
                   <Button type="button" variant="ghost" size="sm" disabled={!roles.length} aria-label={"编辑 " + user.username}
                     onClick={() => setEditing(user)}>编辑</Button>
                   <Button type="button" variant="ghost" size="sm"
@@ -120,7 +121,7 @@ function UserForm({ user, roles, close, updated }: { user?: User; roles: RoleSum
     onClose={() => { if (!busy) close() }}>
     {created ? <PasswordNotice issued={created} close={close} /> : <form className="modal-body form-stack" onSubmit={save}>
       {error && <Notice error>{error}</Notice>}
-      {user ? <label>用户名<input className="field" readOnly value={user.username} /></label> :
+      {user ? <label>用户名<input className="field mono" readOnly value={user.username} /></label> :
         <label>用户名<input className="field" name="username" required minLength={3} maxLength={50}
           pattern="[a-zA-Z0-9_.\\-]{3,50}" title="3–50 位字母、数字或 ._-" autoComplete="off" /></label>}
       <label>显示名称<input className="field" name="displayName" defaultValue={user?.displayName} required maxLength={100} /></label>
@@ -162,8 +163,8 @@ function UserActionDialog({ user, action, close, updated, onPasswordReset }: Use
   return <Modal title={action === "reset" ? "重置用户密码" : label + "用户"} onClose={() => { if (!busy) close() }}>
     <form className="modal-body form-stack" onSubmit={submit}>
       {error && <Notice error>{error}</Notice>}
-      <p>{user.displayName} <span className="mono muted">{user.username}</span></p>
-      <p className="muted">{action === "reset" ? "旧密码和会话将失效。账号启用时，用户可以用新临时密码登录并设置个人密码。" :
+      <div className="info-box"><strong>{user.displayName}</strong><code className="mono">{user.username}</code></div>
+      <p className="muted leading-relaxed">{action === "reset" ? "旧密码和会话将失效。账号启用时，用户可以用新临时密码登录并设置个人密码。" :
         disabling ? "该用户的会话将立即失效，已提交的任务会继续处理。" : "该用户可以重新登录。"}</p>
       <div className="modal-actions">
         <Button type="button" variant="outline" disabled={busy} onClick={close}>取消</Button>

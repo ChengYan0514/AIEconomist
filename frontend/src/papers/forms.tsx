@@ -2,8 +2,9 @@ import { FileArchive, FileText, UploadCloud } from "lucide-react"
 import { useState, type FormEvent } from "react"
 import { api, errorMessage, jobPath, paperPath, params } from "../api"
 import { Modal, Notice, SourceField, jobKinds } from "../components/shared"
-import { usePermissions } from "../permissions"
 import { Button } from "../components/ui/button"
+import { usePermissions } from "../permissions"
+import { navigate } from "../router"
 import type { Job, JobKind, Paper } from "../types"
 
 export function MetadataForm({ paper, close, done }: { paper?: Paper; close: () => void; done: (paper: Paper) => void }) {
@@ -53,7 +54,8 @@ export function ArchiveUpload({ close }: { close: () => void }) {
     setBusy(true); setError("")
     try {
       const job = await api<Job>("/imports", { method: "POST", body: data })
-      window.location.assign(jobPath(job.jobId))
+      close()
+      navigate(jobPath(job.jobId))
     } catch (reason) { setError(errorMessage(reason)) }
     finally { setBusy(false) }
   }
@@ -88,10 +90,10 @@ export function ReplaceOriginal({ paper, close, done }: { paper: Paper; close: (
   </Modal>
 }
 
-export function ProcessPapers({ ids, close }: { ids: string[]; close: () => void }) {
+export function ProcessPapers({ ids, defaultSourceId = "", close }: { ids: string[]; defaultSourceId?: string; close: () => void }) {
   const { canJob } = usePermissions()
   const [byRange, setByRange] = useState(ids.length === 0)
-  const [source, setSource] = useState("")
+  const [source, setSource] = useState(defaultSourceId)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState("")
   async function submit(event: FormEvent<HTMLFormElement>) {
@@ -104,7 +106,8 @@ export function ProcessPapers({ ids, close }: { ids: string[]; close: () => void
     setBusy(true); setError("")
     try {
       const job = await api<Job>("/jobs", { method: "POST", body: JSON.stringify({ kind, ...scope }) })
-      window.location.assign(jobPath(job.jobId))
+      close()
+      navigate(jobPath(job.jobId))
     } catch (reason) { setError(errorMessage(reason)) }
     finally { setBusy(false) }
   }

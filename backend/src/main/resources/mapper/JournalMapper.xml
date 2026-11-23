@@ -1,0 +1,123 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.paperflow.adapters.persistence.JournalMapper">
+    <sql id="aggregated">
+        SELECT p.source_id,
+               COALESCE(MAX(NULLIF(btrim(p.source_name), '')), MAX(NULLIF(btrim(os.display_name), '')), p.source_id) AS name,
+               count(*) FILTER (WHERE NOT p.archived) AS total_papers,
+               count(*) FILTER (WHERE p.archived) AS archived_papers,
+               count(*) FILTER (WHERE NOT p.archived AND p.status = 'PUBLISHED') AS published_count,
+               count(*) FILTER (WHERE NOT p.archived AND p.status = 'READY') AS ready_count,
+               count(*) FILTER (WHERE NOT p.archived AND p.status = 'UNPROCESSED') AS unprocessed_count,
+               count(*) FILTER (WHERE NOT p.archived AND p.status = 'FAILED') AS failed_count,
+               count(*) FILTER (WHERE NOT p.archived AND p.status = 'UNSUPPORTED') AS unsupported_count,
+               count(*) FILTER (WHERE NOT p.archived AND p.matched_work_id IS NOT NULL) AS matched_count,
+               MIN(p.year) FILTER (WHERE NOT p.archived) AS year_min,
+               MAX(p.year) FILTER (WHERE NOT p.archived) AS year_max,
+               MAX(p.updated_at) FILTER (WHERE NOT p.archived) AS latest_updated_at
+        FROM v2_paper_read p
+        LEFT JOIN ${schema}.sources os ON os.id = p.source_id
+        WHERE p.source_id IS NOT NULL AND btrim(p.source_id) &lt;&gt; ''
+        GROUP BY p.source_id
+        HAVING count(*) FILTER (WHERE NOT p.archived) &gt; 0
+    </sql>
+
+    <sql id="filterWhere">
+        WHERE 1 = 1
+        <if test="filter.q != null">
+            AND (strpos(lower(name), lower(#{filter.q})) &gt; 0
+              OR strpos(lower(source_id), lower(#{filter.q})) &gt; 0)
+        </if>
+        <if test="filter.mode.name() == 'HAS_FAILED'">AND failed_count &gt; 0</if>
+        <if test="filter.mode.name() == 'HAS_PENDING'">AND (unprocessed_count &gt; 0 OR ready_count &gt; 0)</if>
+        <if test="filter.mode.name() == 'ALL_PUBLISHED'">AND total_papers &gt; 0 AND published_count = total_papers</if>
+    </sql>
+
+    <select id="overview" resultType="com.paperflow.paper.journal.CorpusJournalOverview">
+        SELECT count(DISTINCT source_id) AS total_journals,
+               count(*) AS total_papers,
+               count(*) FILTER (WHERE status = 'PUBLISHED') AS published_papers,
+               count(*) FILTER (WHERE matched_work_id IS NOT NULL) AS matched_papers,
+               count(*) FILTER (WHERE status = 'FAILED') AS failed_papers,
+               MIN(year) AS year_min,
+               MAX(year) AS year_max
+        FROM v2_paper_read
+        WHERE NOT archived AND source_id IS NOT NULL AND btrim(source_id) &lt;&gt; ''
+    </select>
+
+    <select id="list" resultType="com.paperflow.paper.journal.JournalSummary">
+        WITH aggregated AS (<include refid="aggregated"/>)
+        SELECT * FROM aggregated
+        <include refid="filterWhere"/>
+        <choose>
+            <when test="filter.sort.name() == 'PUBLISHED_RATE_DESC'">
+                ORDER BY (published_count::double precision / GREATEST(total_papers, 1)) DESC, total_papers DESC, source_id ASC
+            </when>
+            <when test="filter.sort.name() == 'FAILED_DESC'">
+                ORDER BY failed_count DESC, total_papers DESC, source_id ASC
+            </when>
+            <when test="filter.sort.name() == 'PENDING_DESC'">
+                ORDER BY (unprocessed_count + ready_count) DESC, total_papers DESC, source_id ASC
+            </when>
+            <when test="filter.sort.name() == 'UPDATED_DESC'">
+                ORDER BY latest_updated_at DESC NULLS LAST, total_papers DESC, source_id ASC
+            </when>
+            <when test="filter.sort.name() == 'NAME_ASC'">
+                ORDER BY lower(name) ASC, source_id ASC
+            </when>
+            <otherwise>
+                ORDER BY total_papers DESC, published_count DESC, source_id ASC
+            </otherwise>
+        </choose>
+        OFFSET #{offset} LIMIT #{size}
+    </select>
+
+    <select id="count" resultType="long">
+        WITH aggregated AS (<include refid="aggregated"/>)
+        SELECT count(*) FROM aggregated
+        <include refid="filterWhere"/>
+    </select>
+
+    <select id="get" resultType="com.paperflow.paper.journal.JournalSummary">
+        SELECT p.source_id,
+               COALESCE(MAX(NULLIF(btrim(p.source_name), '')), MAX(NULLIF(btrim(os.display_name), '')), p.source_id) AS name,
+               count(*) FILTER (WHERE NOT p.archived) AS total_papers,
+               count(*) FILTER (WHERE p.archived) AS archived_papers,
+               count(*) FILTER (WHERE NOT p.archived AND p.status = 'PUBLISHED') AS published_count,
+               count(*) FILTER (WHERE NOT p.archived AND p.status = 'READY') AS ready_count,
+               count(*) FILTER (WHERE NOT p.archived AND p.status = 'UNPROCESSED') AS unprocessed_count,
+               count(*) FILTER (WHERE NOT p.archived AND p.status = 'FAILED') AS failed_count,
+               count(*) FILTER (WHERE NOT p.archived AND p.status = 'UNSUPPORTED') AS unsupported_count,
+               count(*) FILTER (WHERE NOT p.archived AND p.matched_work_id IS NOT NULL) AS matched_count,
+               MIN(p.year) FILTER (WHERE NOT p.archived) AS year_min,
+               MAX(p.year) FILTER (WHERE NOT p.archived) AS year_max,
+               MAX(p.updated_at) FILTER (WHERE NOT p.archived) AS latest_updated_at
+        FROM v2_paper_read p
+        LEFT JOIN ${schema}.sources os ON os.id = p.source_id
+        WHERE p.source_id = #{sourceId}
+        GROUP BY p.source_id
+    </select>
+
+    <select id="importedWorksCount" resultType="long">
+        SELECT count(*) FROM (
+            SELECT work_id FROM v2_openalex_work WHERE source_id = #{sourceId}
+            UNION
+            SELECT work_id FROM work_source WHERE source_id = #{sourceId}
+        ) imported_works
+    </select>
+
+    <select id="years" resultType="com.paperflow.paper.journal.JournalYearStats">
+        SELECT year,
+               count(*) AS total,
+               count(*) FILTER (WHERE status = 'PUBLISHED') AS published,
+               count(*) FILTER (WHERE status = 'READY') AS ready,
+               count(*) FILTER (WHERE status = 'UNPROCESSED') AS unprocessed,
+               count(*) FILTER (WHERE status = 'FAILED') AS failed,
+               count(*) FILTER (WHERE status = 'UNSUPPORTED') AS unsupported,
+               count(*) FILTER (WHERE matched_work_id IS NOT NULL) AS matched
+        FROM v2_paper_read
+        WHERE NOT archived AND source_id = #{sourceId} AND year IS NOT NULL
+        GROUP BY year
+        ORDER BY year ASC
+    </select>
+</mapper>

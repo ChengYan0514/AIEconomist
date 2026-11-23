@@ -94,7 +94,7 @@ class SecurityConfiguration {
             .AuthorizationManagerRequestMatcherRegistry rules, WorkspaceAccess access) {
         String[] auditPaths = {"/api/audit-events", "/api/audit-events/**"};
         String[] contentPaths = {"/api/papers/{paperId}/file", "/api/papers/{paperId}/blocks", "/api/papers/{paperId}/blocks/{sequence}/asset"};
-        String[] paperPaths = {"/api/papers", "/api/papers/{paperId}"};
+        String[] paperPaths = {"/api/papers", "/api/papers/{paperId}", "/api/journals", "/api/journals/{sourceId}"};
         var sourceAccess = access.requireAny(PAPER_READ, PDF_PARSE, FULL_TEXT_IMPORT);
         var csvAccess = access.requireAction(PAPER_CSV_EXPORT, "PAPER_CSV_EXPORT", "PAPER_COLLECTION", "papers");
         rules.dispatcherTypeMatchers(DispatcherType.ASYNC).permitAll()

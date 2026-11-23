@@ -10,6 +10,56 @@ export interface Page<T> {
   total: number
 }
 
+export type JournalFilterMode = "ALL" | "HAS_FAILED" | "HAS_PENDING" | "ALL_PUBLISHED"
+export type JournalSort = "PAPERS_DESC" | "PUBLISHED_RATE_DESC" | "FAILED_DESC" | "PENDING_DESC" | "UPDATED_DESC" | "NAME_ASC"
+
+export interface CorpusJournalOverview {
+  totalJournals: number
+  totalPapers: number
+  publishedPapers: number
+  matchedPapers: number
+  failedPapers: number
+  yearMin: number | null
+  yearMax: number | null
+}
+
+export interface JournalSummary {
+  sourceId: string
+  name: string
+  totalPapers: number
+  archivedPapers: number
+  publishedCount: number
+  readyCount: number
+  unprocessedCount: number
+  failedCount: number
+  unsupportedCount: number
+  matchedCount: number
+  yearMin: number | null
+  yearMax: number | null
+  latestUpdatedAt: string | null
+}
+
+export interface JournalDirectory extends Page<JournalSummary> {
+  summary: CorpusJournalOverview
+}
+
+export interface JournalYearStats {
+  year: number
+  total: number
+  published: number
+  ready: number
+  unprocessed: number
+  failed: number
+  unsupported: number
+  matched: number
+}
+
+export interface JournalDetail {
+  journal: JournalSummary
+  importedWorksCount: number
+  years: JournalYearStats[]
+}
+
 export interface Paper {
   paperId: string
   sourceId: string | null

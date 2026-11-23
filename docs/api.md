@@ -40,6 +40,15 @@ unset password
 curl --fail-with-body -sS -b "$cookie" "$base/session"
 ```
 
+## 期刊目录
+
+| 方法和路径 | 请求 | 成功响应 |
+| --- | --- | --- |
+| `GET /api/journals` | 可选 `q`、`filter`、`sort`、`page`、`size` | `200`，期刊目录分页及全库期刊概览 `summary` |
+| `GET /api/journals/{sourceId}` | 出版来源 ID | `200`，期刊统计摘要、本地已导入 OpenAlex 作品数及按年份分布 |
+
+需要 `PAPER_READ` 权限。主统计口径仅包含未归档论文，同时提供该期刊的 `archivedPapers` 归档计数。`filter` 可取 `ALL`、`HAS_FAILED`、`HAS_PENDING`、`ALL_PUBLISHED`；`sort` 可取 `PAPERS_DESC`、`PUBLISHED_RATE_DESC`、`FAILED_DESC`、`PENDING_DESC`、`UPDATED_DESC`、`NAME_ASC`。
+
 ## 论文和原始文件
 
 | 方法和路径 | 请求 | 成功响应 |
