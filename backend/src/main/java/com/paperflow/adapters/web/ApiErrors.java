@@ -1,5 +1,6 @@
 package com.paperflow.adapters.web;
 
+import com.paperflow.account.model.UserManagementException;
 import com.paperflow.audit.model.AuditEventNotFound;
 import com.paperflow.job.JobConflict;
 import com.paperflow.job.JobNotFound;
@@ -25,6 +26,17 @@ public class ApiErrors {
     private static final Logger log = LoggerFactory.getLogger(ApiErrors.class);
 
     public record Error(String code, String message) {}
+
+    @ExceptionHandler(UserManagementException.class)
+    public ResponseEntity<Error> userManagement(UserManagementException error) {
+        var status = error.reason() == UserManagementException.Reason.USER_NOT_FOUND ? HttpStatus.NOT_FOUND : HttpStatus.CONFLICT;
+        return response(status, error.reason().name(), error.getMessage());
+    }
+
+    @ExceptionHandler(WorkspaceAccess.Denied.class)
+    public ResponseEntity<Error> denied(WorkspaceAccess.Denied error) {
+        return response(HttpStatus.FORBIDDEN, error.code(), error.getMessage());
+    }
 
     @ExceptionHandler(PaperNotFound.class)
     public ResponseEntity<Error> paperNotFound(PaperNotFound error) {

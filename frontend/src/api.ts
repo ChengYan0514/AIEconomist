@@ -22,6 +22,9 @@ export async function api<T>(path: string, init: RequestInit = {}): Promise<T> {
     throw new ApiError(0, "无法连接管理服务，请检查连接后重试。")
   }
   if (!response.ok) {
+    if (path !== "/session" && (response.status === 401 || response.status === 403)) {
+      window.dispatchEvent(new Event("sessionchange"))
+    }
     const error = await response.json().catch(() => null)
     throw new ApiError(response.status, error?.message || "请求暂时失败，请稍后重试。")
   }

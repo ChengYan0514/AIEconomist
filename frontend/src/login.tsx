@@ -1,6 +1,7 @@
 import { Fingerprint, PanelTop } from "lucide-react"
 import { useState, type FormEvent } from "react"
 import { api, errorMessage } from "./api"
+import { PasswordForm } from "./components/password"
 import { Notice } from "./components/shared"
 import { Button } from "./components/ui/button"
 import { Brand } from "./components/workspace"
@@ -34,12 +35,23 @@ export function Login({ serviceError }: { serviceError?: string }) {
       </div>
       {selected === "admin" ? <form id="admin-login" role="tabpanel" className="form-stack" onSubmit={submit}>
         {(error || serviceError) && <Notice error>{error || serviceError}</Notice>}
-        <label>用户名<input className="field" name="username" placeholder="输入管理员用户名" required autoComplete="username" /></label>
+        <label>用户名<input className="field" name="username" placeholder="输入用户名" required autoComplete="username" /></label>
         <label>密码<input className="field" name="password" placeholder="输入密码" type="password" required autoComplete="current-password" /></label>
         <Button disabled={busy} type="submit">{busy ? "正在登录…" : "登录管理端"}</Button>
       </form> : <div id="client-login" role="tabpanel" className="client-entry">
         <PanelTop size={27} /><strong>客户端待开放</strong><p>论文数据管理员可以通过管理端登录。</p>
       </div>}
+    </section>
+  </main>
+}
+
+export function FirstPassword({ logout }: { logout: () => void }) {
+  return <main className="login-page">
+    <section className="login-card panel">
+      <Brand />
+      <h1>设置个人密码</h1>
+      <p className="muted mb-4">设置新密码后，请重新登录进入工作区。</p>
+      <PasswordForm temporary cancel={logout} done={() => window.location.reload()} />
     </section>
   </main>
 }

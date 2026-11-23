@@ -5,12 +5,14 @@ import { Empty, JobChip, Loading, Notice, Pagination, jobKinds } from "./compone
 import { Button } from "./components/ui/button"
 import { SectionHeader } from "./components/workspace"
 import { ArchiveUpload, ProcessPapers } from "./papers/forms"
+import { usePermissions } from "./permissions"
 import type { Job, JobItem, JobKind, JobState, Page, Paper } from "./types"
 
 const size = 20
 const states: [JobState, string][] = [["READY", "待确认"], ["QUEUED", "排队中"], ["RUNNING", "处理中"], ["SUCCEEDED", "已完成"], ["PARTIAL", "部分完成"], ["FAILED", "失败"]]
 
 export function Jobs() {
+  const { canJob, canProcess } = usePermissions()
   const [kind, setKind] = useState("")
   const [state, setState] = useState("")
   const [page, setPage] = useState(0)
@@ -20,8 +22,8 @@ export function Jobs() {
   useRefresh(rows.some((row) => active(row)), result.reload)
   return <>
     <SectionHeader title="导入与处理" description="查看批量导入和各处理阶段的进度，定位和重试个别失败项。" actions={<>
-      <Button variant="outline" onClick={() => setDialog("process")}><Workflow size={17} />提交论文处理</Button>
-      <Button onClick={() => setDialog("zip")}><FileArchive size={17} />导入原件</Button>
+      {canProcess && <Button variant="outline" onClick={() => setDialog("process")}><Workflow size={17} />提交论文处理</Button>}
+      {canJob("ORIGINAL_IMPORT") && <Button onClick={() => setDialog("zip")}><FileArchive size={17} />导入原件</Button>}
     </>} />
     <section className="panel">
       <div className="panel-bar">
@@ -47,12 +49,13 @@ export function Jobs() {
             </tr>)}</tbody></table></div>}
       {result.data && <Pagination total={result.data.total} page={page} size={size} change={setPage} />}
     </section>
-    {dialog === "zip" && <ArchiveUpload close={() => setDialog(null)} />}
-    {dialog === "process" && <ProcessPapers ids={[]} close={() => setDialog(null)} />}
+    {canJob("ORIGINAL_IMPORT") && dialog === "zip" && <ArchiveUpload close={() => setDialog(null)} />}
+    {canProcess && dialog === "process" && <ProcessPapers ids={[]} close={() => setDialog(null)} />}
   </>
 }
 
 export function JobDetail({ id }: { id: string }) {
+  const { can, canJob } = usePermissions()
   const path = jobPath(id)
   const [page, setPage] = useState(0)
   const [error, setError] = useState("")
@@ -77,8 +80,8 @@ export function JobDetail({ id }: { id: string }) {
   return <>
     <SectionHeader title={jobKinds[job.kind]} back={<a href="/jobs" className="back-link"><ArrowLeft size={15} />返回导入与处理</a>}
       description={job.scope?.filename || job.scope?.sourceId || "所选论文"} actions={<>
-        {job.state === "READY" && <Button disabled={busy} onClick={() => action("confirm")}>确认导入 {job.ready} 条</Button>}
-        {!active(job) && job.failed > 0 && job.ready === 0 && (job.kind !== "ORIGINAL_IMPORT" || job.confirmedAt) &&
+        {canJob("ORIGINAL_IMPORT") && job.state === "READY" && <Button disabled={busy} onClick={() => action("confirm")}>确认导入 {job.ready} 条</Button>}
+        {canJob(job.kind) && !active(job) && job.failed > 0 && job.ready === 0 && (job.kind !== "ORIGINAL_IMPORT" || job.confirmedAt) &&
           <Button disabled={busy} variant="outline" onClick={() => action("retry")}><RotateCcw size={16} />重试失败项</Button>}
       </>} />
     {error && <Notice error>{error}</Notice>}
@@ -99,8 +102,8 @@ export function JobDetail({ id }: { id: string }) {
             <td>{item.result?.candidates && item.result.candidates.length > 1 ?
               <span className="status-chip status-blue"><span className="status-dot" />待确认匹配</span> : <JobChip status={item.state} />}</td>
             <td className="result-cell"><span>{item.message || "—"}</span>
-              {job.kind === "PARSE" && item.state === "SUCCEEDED" && item.paperId && <PublishParsed paperId={item.paperId} />}
-              {item.result?.candidates && item.result.candidates.length > 1 && item.paperId && <CandidatePicker item={item} />}
+              {canJob("PUBLISH") && job.kind === "PARSE" && item.state === "SUCCEEDED" && item.paperId && <PublishParsed paperId={item.paperId} />}
+              {canJob("MATCH") && can("PAPER_READ") && item.result?.candidates && item.result.candidates.length > 1 && item.paperId && <CandidatePicker item={item} />}
             </td>
           </tr>)}</tbody>
         </table></div>}

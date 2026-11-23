@@ -4,6 +4,7 @@ import { dateLabel, useQuery } from "./api"
 import { Chip, Empty, Loading, Notice, Pagination } from "./components/shared"
 import { Button } from "./components/ui/button"
 import { SectionHeader } from "./components/workspace"
+import { roles, type Role } from "./permissions"
 import type { Page, PaperStatus } from "./types"
 
 type Outcome = "SUCCEEDED" | "FAILED" | "DENIED"
@@ -18,12 +19,19 @@ type AuditEvent = {
 }
 type AuditDetail = AuditEvent & { summary: Record<string, string | number | boolean> }
 
-const actions: Record<string, string> = { PAPER_CSV_EXPORT: "论文 CSV 导出" }
-const objects: Record<string, string> = { PAPER_COLLECTION: "论文库" }
+const actions: Record<string, string> = {
+  PAPER_CSV_EXPORT: "论文 CSV 导出", USER_CREATE: "创建用户", USER_UPDATE: "编辑用户",
+  USER_DISPLAY_NAME_CHANGE: "修改显示名称", USER_ROLE_CHANGE: "变更用户角色",
+  API_ACCESS: "访问 API", JOB_SUBMIT: "提交任务", JOB_RETRY: "重试任务",
+}
+const objects: Record<string, string> = {
+  PAPER_COLLECTION: "论文库", USER: "用户", USER_COLLECTION: "用户列表", PERMISSION: "权限", JOB: "任务",
+}
 const outcomes: Record<Outcome, [string, string]> = {
   SUCCEEDED: ["成功", "green"], FAILED: ["失败", "red"], DENIED: ["拒绝", "amber"],
 }
 const summaryLabels: Record<string, string> = {
+  displayName: "显示名称", previousDisplayName: "原显示名称", role: "角色", previousRole: "原角色", permission: "所需权限",
   exportedRows: "导出行数", searchApplied: "应用了搜索词", archived: "归档视图",
   sourceId: "来源 ID", yearFrom: "起始年份", yearTo: "结束年份", status: "处理状态", code: "错误代码",
 }
@@ -138,7 +146,7 @@ function AuditResults({ query, page, selected, open, turn }: {
                 <td>{event.actor}</td>
                 <td><button type="button" className="inline-link audit-event-button" aria-expanded={String(event.eventId) === selected}
                   onClick={(click) => open(event.eventId, click.currentTarget)}>{actions[event.action] ?? event.action}</button></td>
-                <td>{objects[event.objectType] ?? event.objectId}</td>
+                <td>{event.objectType === "PAPER_COLLECTION" ? objects[event.objectType] : event.objectId}</td>
                 <td><OutcomeChip outcome={event.outcome} /></td>
               </tr>)}</tbody>
             </table>
@@ -171,6 +179,8 @@ function EventDetail({ id, close }: { id: string; close: () => void }) {
           <dl>
             {Object.entries(event.summary).map(([key, value]) => <SummaryItem key={key} name={key} value={value} />)}
           </dl>
+          {event.objectType === "USER" &&
+            <div className="audit-detail-link"><a className="inline-link" href={"/users?q=" + encodeURIComponent(event.objectId)}>查看用户</a></div>}
           {event.objectType === "PAPER_COLLECTION" && event.objectId === "papers" &&
             <div className="audit-detail-link"><a className="inline-link" href="/papers">查看论文库</a></div>}
         </>}
@@ -179,7 +189,7 @@ function EventDetail({ id, close }: { id: string; close: () => void }) {
 
 function SummaryItem({ name, value }: { name: string; value: AuditDetail["summary"][string] }) {
   return <><dt>{summaryLabels[name] ?? name}</dt><dd>
-    {name === "status" ? <Chip status={value as PaperStatus} /> : typeof value === "boolean" ? value ? "是" : "否" : value}
+    {name === "status" ? <Chip status={value as PaperStatus} /> : (name === "role" || name === "previousRole") ? roles[value as Role] ?? value : typeof value === "boolean" ? value ? "是" : "否" : value}
   </dd></>
 }
 

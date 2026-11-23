@@ -1,7 +1,8 @@
-import { BookOpen, ChevronDown, ClipboardList, Database, FileText, LogOut, Menu, ShieldCheck, Upload, UserRound, X } from "lucide-react"
-import { useState, type FormEvent, type ReactNode } from "react"
-import { api, errorMessage } from "../api"
-import { Modal, Notice } from "./shared"
+import { BookOpen, ChevronDown, ClipboardList, Database, FileText, LogOut, Menu, ShieldCheck, Upload, UserRound, UsersRound, X } from "lucide-react"
+import { useState, type ReactNode } from "react"
+import { usePermissions, type Permission } from "../permissions"
+import { PasswordForm } from "./password"
+import { Modal } from "./shared"
 import { Button } from "./ui/button"
 
 export function Brand() {
@@ -10,24 +11,31 @@ export function Brand() {
   </div>
 }
 
-const navigation = [{
+const navigation: { label: string; items: { path: string; label: string; icon: typeof FileText; permission: Permission }[] }[] = [{
   label: "数据工作区",
   items: [
-    { path: "/papers", label: "论文库", icon: FileText },
-    { path: "/jobs", label: "导入与处理", icon: Upload },
-    { path: "/openalex", label: "OpenAlex", icon: Database },
+    { path: "/papers", label: "论文库", icon: FileText, permission: "PAPER_READ" },
+    { path: "/jobs", label: "导入与处理", icon: Upload, permission: "JOB_READ" },
+    { path: "/openalex", label: "OpenAlex", icon: Database, permission: "OPENALEX_MANAGE" },
   ],
 }, {
   label: "系统管理",
-  items: [{ path: "/audit", label: "审计日志", icon: ClipboardList }],
+  items: [
+    { path: "/users", label: "用户管理", icon: UsersRound, permission: "SYSTEM_MANAGE" },
+    { path: "/audit", label: "审计日志", icon: ClipboardList, permission: "SYSTEM_MANAGE" },
+  ],
 }]
 
-export function Workspace({ page, username, children, logout }:
-  { page: string; username: string; children: ReactNode; logout: () => void }) {
+export function Workspace({ page, displayName, children, logout }:
+  { page: string; displayName: string; children: ReactNode; logout: () => void }) {
+  const { can, canJob } = usePermissions()
   const [password, setPassword] = useState(false)
   const [expanded, setExpanded] = useState(false)
   const matchesPage = ({ path }: { path: string }) => page === path || page.startsWith(path + "/")
-  const group = navigation.find(({ items }) => items.some(matchesPage))
+  const visibleNavigation = navigation.map(({ label, items }) => ({
+    label, items: items.filter(({ path, permission }) => path === "/openalex" ? canJob("METADATA") : can(permission)),
+  })).filter(({ items }) => items.length > 0)
+  const group = visibleNavigation.find(({ items }) => items.some(matchesPage))
   const active = group?.items.find(matchesPage)
   return <div className="workspace">
     <aside className="sidebar">
@@ -40,7 +48,7 @@ export function Workspace({ page, username, children, logout }:
       </div>
       <div id="sidebar-content" className="sidebar-content" data-expanded={expanded}>
         <nav className="sidebar-nav" aria-label="管理导航">
-          {navigation.map(({ label, items }) => <div className="nav-group" key={label}>
+          {visibleNavigation.map(({ label, items }) => <div className="nav-group" key={label}>
             <h2>{label}</h2>
             {items.map(({ path, label, icon: Icon }) =>
               <a key={path} href={path} aria-current={path === active?.path ? "page" : undefined} className="nav-link">
@@ -50,7 +58,7 @@ export function Workspace({ page, username, children, logout }:
           </div>)}
         </nav>
         <details className="account-menu">
-          <summary><UserRound size={19} /><span>{username}</span><ChevronDown size={16} /></summary>
+          <summary><UserRound size={19} /><span>{displayName}</span><ChevronDown size={16} /></summary>
           <div className="account-popover">
             <button type="button" onClick={() => setPassword(true)}><ShieldCheck size={16} />修改密码</button>
             <button type="button" onClick={logout}><LogOut size={16} />退出登录</button>
@@ -64,7 +72,9 @@ export function Workspace({ page, username, children, logout }:
       </header>
       <main className="page-content">{children}</main>
     </div>
-    {password && <PasswordModal close={() => setPassword(false)} done={() => window.location.assign("/")} />}
+    {password && <Modal title="修改密码" description="密码更新后请重新登录。" onClose={() => setPassword(false)}>
+      <PasswordForm cancel={() => setPassword(false)} done={() => window.location.assign("/")} />
+    </Modal>}
   </div>
 }
 
@@ -73,27 +83,4 @@ export function SectionHeader({ title, description, actions, back }:
   return <section className="section-header">
     <div className="min-w-0">{back}<h1>{title}</h1>{description && <p>{description}</p>}</div>{actions && <div className="section-actions">{actions}</div>}
   </section>
-}
-
-function PasswordModal({ close, done }: { close: () => void; done: () => void }) {
-  const [error, setError] = useState("")
-  const [busy, setBusy] = useState(false)
-  async function submit(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault()
-    const form = new FormData(event.currentTarget)
-    setError(""); setBusy(true)
-    try {
-      await api("/session/password", { method: "POST", body: JSON.stringify(Object.fromEntries(form)) })
-      done()
-    } catch (reason) { setError(errorMessage(reason)) }
-    finally { setBusy(false) }
-  }
-  return <Modal title="修改密码" description="密码更新后请重新登录。" onClose={close}>
-    <form className="modal-body form-stack" onSubmit={submit}>
-      {error && <Notice error>{error}</Notice>}
-      <label>当前密码<input className="field" name="currentPassword" type="password" autoComplete="current-password" required /></label>
-      <label>新密码<input className="field" name="newPassword" type="password" autoComplete="new-password" minLength={12} required /></label>
-      <div className="modal-actions"><Button type="button" variant="outline" onClick={close}>取消</Button><Button disabled={busy}>保存密码</Button></div>
-    </form>
-  </Modal>
 }

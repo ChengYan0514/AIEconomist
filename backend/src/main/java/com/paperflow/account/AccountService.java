@@ -1,39 +1,51 @@
 package com.paperflow.account;
 
+import com.paperflow.account.model.Role;
 import org.springframework.security.crypto.password.PasswordEncoder;
 
 import java.nio.charset.StandardCharsets;
 
 public final class AccountService {
-    private final AdminAccounts accounts;
+    private final Accounts accounts;
     private final PasswordEncoder passwords;
 
-    public AccountService(AdminAccounts accounts, PasswordEncoder passwords) {
+    public AccountService(Accounts accounts, PasswordEncoder passwords) {
         this.accounts = accounts;
         this.passwords = passwords;
     }
 
     public void bootstrap(String rawUsername, String password) {
-        String username = AdminAccounts.normalizeUsername(rawUsername);
+        String username = Accounts.normalizeUsername(rawUsername);
         if (username.isEmpty() && password.isEmpty()) return;
-        if (!username.matches("[a-z0-9_.-]{3,50}")) {
-            throw new IllegalArgumentException("管理员用户名需为 3–50 位字母、数字或 ._-");
-        }
-        if (accounts.passwordHash(username) == null) {
+        validateUsername(username);
+        if (accounts.credentials(username) == null) {
             validatePassword(password);
-            accounts.create(username, passwords.encode(password));
+            accounts.create(username, username, passwords.encode(password), Role.SYSTEM_ADMIN, false);
         }
     }
 
-    public void changePassword(String username, String currentPassword, String newPassword) {
+    public void changePassword(String username, long credentialVersion, String currentPassword, String newPassword) {
         if (currentPassword == null) throw new IllegalArgumentException("请输入当前密码");
         validatePassword(newPassword);
-        String oldHash = accounts.passwordHash(username);
-        if (oldHash == null || !passwords.matches(currentPassword, oldHash)) {
+        var credentials = accounts.credentials(username);
+        if (credentials == null || !credentials.enabled() || credentials.credentialVersion() != credentialVersion) {
+            throw new IllegalArgumentException("账号已发生变更，请重新登录");
+        }
+        if (currentPassword.getBytes(StandardCharsets.UTF_8).length > 72
+                || !passwords.matches(currentPassword, credentials.passwordHash())) {
             throw new IllegalArgumentException("当前密码有误");
         }
-        if (accounts.change(username, oldHash, passwords.encode(newPassword)) != 1) {
+        if (credentials.mustChangePassword() && currentPassword.equals(newPassword)) {
+            throw new IllegalArgumentException("请设置不同于临时密码的个人密码");
+        }
+        if (accounts.changePassword(username, credentialVersion, passwords.encode(newPassword)) != 1) {
             throw new IllegalArgumentException("账号已发生变更，请重新登录");
+        }
+    }
+
+    static void validateUsername(String username) {
+        if (!username.matches("[a-z0-9_.-]{3,50}")) {
+            throw new IllegalArgumentException("用户名需为 3–50 位小写字母、数字或 ._-");
         }
     }
 

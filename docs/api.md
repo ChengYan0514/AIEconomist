@@ -7,12 +7,14 @@
 | 方法和路径 | 请求 | 成功响应 |
 | --- | --- | --- |
 | `GET /api/csrf` | 可匿名调用 | `200`，`{headerName, token}` |
-| `POST /api/session` | JSON `username`、`password`，需要 CSRF | `200`，`{username}`，切换会话 ID |
-| `GET /api/session` | 发送会话 Cookie | `200`，`{username}` |
+| `POST /api/session` | JSON `username`、`password`，需要 CSRF | `200`，当前账号和权限，切换会话 ID |
+| `GET /api/session` | 发送会话 Cookie | `200`，当前账号和权限 |
 | `DELETE /api/session` | 发送会话 Cookie 和 CSRF | `204`，结束当前会话 |
-| `POST /api/session/password` | JSON `currentPassword`、`newPassword`，需要会话和 CSRF | `204`，密码更新后结束当前会话 |
+| `POST /api/session/password` | JSON `currentPassword`、`newPassword`，需要会话和 CSRF | `204`，密码更新后撤销使用旧凭据建立的会话 |
 
-先取 CSRF，再用同一 Cookie 容器登录。登录成功后继续保存响应更新的 `PAPERFLOW_SESSION`。除获取 CSRF 和登录外，下列 API 均需要管理员会话。每次发送 `POST`、`PUT`、`PATCH` 或 `DELETE` 前，可以按管理前端的方式刷新 CSRF，将返回的 `token` 放进 `headerName` 指定的请求头。注销或改密后，重新从获取 CSRF 开始。会话超时配置为 8 小时。新密码至少 12 个字符，UTF-8 编码最多 72 字节。
+先取 CSRF，再用同一 Cookie 容器登录。登录成功后继续保存响应更新的 `PAPERFLOW_SESSION`。除获取 CSRF 和登录外，下列 API 均需要有效的平台会话。每次发送 `POST`、`PUT`、`PATCH` 或 `DELETE` 前，可以按管理前端的方式刷新 CSRF，将返回的 `token` 放进 `headerName` 指定的请求头。注销或改密后，重新从获取 CSRF 开始。会话超时配置为 8 小时。新密码至少 12 个字符，UTF-8 编码最多 72 字节。
+
+会话返回 `username`、`displayName`、`role`、`mustChangePassword` 和 `permissions`。使用临时密码登录时，业务请求返回 `403 PASSWORD_CHANGE_REQUIRED`，可查看会话、获取 CSRF、改密或退出。修改角色后，已有会话的后续请求使用新权限。权限代码与各内置角色的能力见 [OpenAPI 权限说明](openapi.yaml)。
 
 以下 Bash 示例需要 `curl` 和 `jq`。在同一个 shell 中继续执行后续示例，复用会话和 `write_api`。
 
@@ -155,6 +157,16 @@ S123,2024,Example paper,Alice;Bob,files/paper.pdf
 
 唯一候选可自动关联，多候选项会以 `SKIPPED` 返回，`result.candidates` 列出可选作品，`result.matched` 为 `false`。手动确认前重新读取论文取得当前 `version`，再用候选的 `workId` 提交确认。服务端按当前论文复核候选。成功后可从论文的 `matchedWorkId` 核对结果。
 
+## 用户管理
+
+| 请求 | 参数 | 成功响应 |
+| --- | --- | --- |
+| `GET /api/users` | 可选 `q`、`role`、`status`、`page`、`size` | `200`，用户分页，用户名升序 |
+| `POST /api/users` | JSON `username`、`displayName`、`role` | `201`，`{user, temporaryPassword}` |
+| `PATCH /api/users/{username}` | JSON `displayName`、`role` | `200`，更新后的用户 |
+
+这些接口需要系统管理员权限。搜索同时匹配用户名和显示名称，忽略大小写。角色为 `SYSTEM_ADMIN`、`DATA_MAINTAINER` 或 `READ_ONLY`。状态为 `ACTIVE` 或 `DISABLED`。临时密码在创建响应中展示一次。用户名在创建时规范化，之后保持固定。最后一个启用的系统管理员改为其他角色时返回 `409 LAST_SYSTEM_ADMIN`。
+
 ## 审计日志
 
 | 方法和路径 | 请求 | 成功响应 |
@@ -164,7 +176,9 @@ S123,2024,Example paper,Alice;Bob,files/paper.pdf
 
 仅系统管理员可读取。时间按 ISO 8601 含时区格式填写，起止边界均包含。标识按去除首尾空白后的值精确匹配。所有筛选条件同时生效。时间相同时按事件 ID 倒序。每个事件包含 `eventId`、`occurredAt`、`actor`、`action`、`objectType`、`objectId` 和 `outcome`。
 
-论文 CSV 导出的动作是 `PAPER_CSV_EXPORT`，对象是 `PAPER_COLLECTION` 类型的 `papers`。服务器完成 CSV 写入与刷新后记录 `SUCCEEDED`，摘要包含导出行数、是否使用搜索词、归档视图以及已应用的来源 ID、年份范围和处理状态。请求字段无效或写入中断时记录 `FAILED`，摘要只包含错误代码。未登录的请求返回 `401`。审计摘要排除原始搜索词、正文、CSV 内容、密码、密钥和会话标识。
+论文 CSV 导出的动作是 `PAPER_CSV_EXPORT`，对象是 `PAPER_COLLECTION` 类型的 `papers`。服务器完成 CSV 写入与刷新后记录 `SUCCEEDED`，摘要包含导出行数、是否使用搜索词、归档视图以及已应用的来源 ID、年份范围和处理状态。请求字段无效或写入中断时记录 `FAILED`，摘要只包含错误代码。未登录的请求返回 `401`，已登录但未获准的导出请求返回 `403` 并记录 `DENIED`。审计摘要排除原始搜索词、正文、CSV 内容、密码、密钥和会话标识。
+
+用户创建、显示名称修改和角色变更分别记录为 `USER_CREATE`、`USER_DISPLAY_NAME_CHANGE` 和 `USER_ROLE_CHANGE`。对象类型为 `USER`，对象 ID 为该用户的固定用户名。摘要包含此次变更对应的资料与角色字段。
 
 ## 错误处理
 
@@ -173,9 +187,9 @@ S123,2024,Example paper,Alice;Bob,files/paper.pdf
 | HTTP 状态 | 常见 `code` | 含义 |
 | --- | --- | --- |
 | `400` | `INVALID_INPUT` | 字段、分页、文件格式或范围无效，也涵盖应用层单文件 100 MiB 上限 |
-| `401` | `AUTH_REQUIRED`、`INVALID_LOGIN` | 需要管理员会话，或登录凭据有误 |
-| `403` | `ACCESS_DENIED` | 请求校验失败。写请求可检查 Cookie 和 CSRF |
-| `404` | `PAPER_NOT_FOUND`、`JOB_NOT_FOUND`、`FILE_MISSING`、`AUDIT_EVENT_NOT_FOUND` | 论文、任务、文件或审计事件不可读取 |
-| `409` | `PAPER_CHANGED`、`PAPER_ARCHIVED`、`DUPLICATE_PAPER`、`JOB_CONFLICT`、`CANDIDATE_MISSING`、`WORK_ALREADY_BOUND`、`CONCURRENT_CHANGE` | 版本冲突、业务状态冲突或并发更新 |
+| `401` | `AUTH_REQUIRED`、`INVALID_LOGIN` | 需要有效会话，或登录凭据有误 |
+| `403` | `ACCESS_DENIED`、`PASSWORD_CHANGE_REQUIRED` | 权限不足、需要先改密，或请求未通过 CSRF 校验 |
+| `404` | `PAPER_NOT_FOUND`、`JOB_NOT_FOUND`、`FILE_MISSING`、`USER_NOT_FOUND`、`AUDIT_EVENT_NOT_FOUND` | 论文、任务、文件、用户或审计事件不可读取 |
+| `409` | `PAPER_CHANGED`、`PAPER_ARCHIVED`、`DUPLICATE_PAPER`、`JOB_CONFLICT`、`CANDIDATE_MISSING`、`WORK_ALREADY_BOUND`、`USERNAME_TAKEN`、`LAST_SYSTEM_ADMIN`、`CONCURRENT_CHANGE` | 版本冲突、业务状态冲突或并发更新 |
 | `413` | `FILE_TOO_LARGE` | 超过 multipart 请求配置上限，单上传文件 256 MiB，请求体 257 MiB |
 | `500` | `INTERNAL` | 服务暂时无法完成操作 |

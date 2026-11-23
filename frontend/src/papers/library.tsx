@@ -4,6 +4,7 @@ import { paperPath, params, useQuery } from "../api"
 import { Chip, Empty, Loading, Notice, Pagination, SourceField } from "../components/shared"
 import { Button } from "../components/ui/button"
 import { SectionHeader } from "../components/workspace"
+import { usePermissions } from "../permissions"
 import type { Page, Paper, PaperStatus } from "../types"
 import { ArchiveUpload, MetadataForm, ProcessPapers } from "./forms"
 
@@ -11,9 +12,12 @@ const size = 20
 const initial = { q: "", sourceId: "", yearFrom: "", yearTo: "", status: "" }
 
 export function Library() {
+  const { can, canJob, canProcess } = usePermissions()
+  const canWrite = can("PAPER_WRITE")
   const [draft, setDraft] = useState(initial)
   const [filter, setFilter] = useState(initial)
   const [archived, setArchived] = useState(false)
+  const canSelect = !archived && canProcess
   const [page, setPage] = useState(0)
   const [selected, setSelected] = useState<Set<string>>(new Set())
   const [dialog, setDialog] = useState<"upload" | "archive" | "process" | null>(null)
@@ -54,9 +58,9 @@ export function Library() {
 
   return <>
     <SectionHeader title="论文库" actions={<>
-      <Button asChild variant="outline"><a href={"/api/papers/export" + query}><Download size={17} />导出 CSV</a></Button>
-      <Button type="button" variant="outline" onClick={() => setDialog("upload")}><Plus size={17} />上传单篇</Button>
-      <Button type="button" onClick={() => setDialog("archive")}><Upload size={17} />批量导入</Button>
+      {can("PAPER_CSV_EXPORT") && <Button asChild variant="outline"><a href={"/api/papers/export" + query}><Download size={17} />导出 CSV</a></Button>}
+      {canWrite && <Button type="button" variant="outline" onClick={() => setDialog("upload")}><Plus size={17} />上传单篇</Button>}
+      {canJob("ORIGINAL_IMPORT") && <Button type="button" onClick={() => setDialog("archive")}><Upload size={17} />批量导入</Button>}
     </>} />
     <form className="filter-bar" onSubmit={apply}>
       <label className="search-box"><Search size={17} /><input className="field" type="search" value={draft.q} placeholder="搜索标题、作者、DOI 或论文 ID" aria-label="搜索论文" onChange={(e) => update("q", e.target.value)} /></label>
@@ -74,9 +78,9 @@ export function Library() {
         <button type="button" aria-pressed={!archived} onClick={() => switchArchive(false)}><BookOpenCheck size={16} />论文列表</button>
         <button type="button" aria-pressed={archived} onClick={() => switchArchive(true)}><Archive size={16} />归档</button>
       </div>
-      {!archived && selected.size === 0 && <Button type="button" variant="outline" size="sm" onClick={() => setDialog("process")}><Workflow size={15} />批量处理</Button>}
+      {canSelect && selected.size === 0 && <Button type="button" variant="outline" size="sm" onClick={() => setDialog("process")}><Workflow size={15} />批量处理</Button>}
     </div>
-    {selected.size > 0 && <div className="selection-bar">
+    {canSelect && selected.size > 0 && <div className="selection-bar">
       <span role="status">已选择 {selected.size} 篇</span>
       <Button type="button" variant="ghost" size="sm" onClick={() => setDialog("process")}><Workflow size={15} />批量处理</Button>
       <Button type="button" variant="ghost" size="sm" onClick={() => setSelected(new Set())}>取消选择</Button>
@@ -84,13 +88,13 @@ export function Library() {
     <section className="panel library-panel">
       {result.error ? <div className="p-5"><Notice error>{result.error.message}</Notice><Button className="mt-3" variant="outline" onClick={result.reload}>重新加载</Button></div> :
         result.loading && !rows.length ? <Loading /> : !rows.length ?
-          <Empty title={archived ? "没有归档论文" : "没有找到论文"}>调整筛选条件，或通过批量导入添加原件。</Empty> :
+          <Empty title={archived ? "没有归档论文" : "没有找到论文"}>{canJob("ORIGINAL_IMPORT") ? "调整筛选条件，或通过批量导入添加原件。" : "调整筛选条件后重试。"}</Empty> :
           <div className="table-scroll" tabIndex={0} role="region" aria-label="论文列表表格">
             <table className="data-table paper-table">
-              <thead><tr>{!archived && <th className="check-cell"><input type="checkbox" checked={allChecked} onChange={togglePage} aria-label="选择本页全部论文" /></th>}
+              <thead><tr>{canSelect && <th className="check-cell"><input type="checkbox" checked={allChecked} onChange={togglePage} aria-label="选择本页全部论文" /></th>}
                 <th scope="col">论文</th><th scope="col">出版来源</th><th scope="col">年份</th><th scope="col">全文状态</th><th scope="col">OpenAlex</th></tr></thead>
               <tbody>{rows.map((paper) => <tr key={paper.paperId} className={selected.has(paper.paperId) ? "row-selected" : ""}>
-                {!archived && <td className="check-cell"><input type="checkbox" checked={selected.has(paper.paperId)} onChange={() => toggle(paper.paperId)} aria-label={"选择 " + (paper.title || paper.paperId)} /></td>}
+                {canSelect && <td className="check-cell"><input type="checkbox" checked={selected.has(paper.paperId)} onChange={() => toggle(paper.paperId)} aria-label={"选择 " + (paper.title || paper.paperId)} /></td>}
                 <td className="title-cell"><a href={paperPath(paper.paperId)}>{paper.title || paper.paperId}</a><small>{paper.authors?.replaceAll(";", " · ") || "作者未登记"}</small></td>
                 <td className="source-cell">{paper.sourceName || paper.sourceId || "—"}</td>
                 <td>{paper.year ?? "—"}</td>
@@ -101,8 +105,8 @@ export function Library() {
           </div>}
     </section>
     {result.data && !result.error && <Pagination page={page} size={size} total={result.data.total} change={setPage} />}
-    {dialog === "upload" && <MetadataForm close={() => setDialog(null)} done={(paper) => window.location.assign(paperPath(paper.paperId))} />}
-    {dialog === "archive" && <ArchiveUpload close={() => setDialog(null)} />}
-    {dialog === "process" && <ProcessPapers ids={[...selected]} close={() => setDialog(null)} />}
+    {canWrite && dialog === "upload" && <MetadataForm close={() => setDialog(null)} done={(paper) => window.location.assign(paperPath(paper.paperId))} />}
+    {canJob("ORIGINAL_IMPORT") && dialog === "archive" && <ArchiveUpload close={() => setDialog(null)} />}
+    {canProcess && dialog === "process" && <ProcessPapers ids={[...selected]} close={() => setDialog(null)} />}
   </>
 }

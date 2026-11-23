@@ -1,6 +1,7 @@
 package com.paperflow.adapters.web;
 
 import com.fasterxml.jackson.databind.JsonNode;
+import com.paperflow.account.model.AccountAccess;
 import com.paperflow.job.*;
 import com.paperflow.original.OriginalImports;
 import org.springframework.http.HttpStatus;
@@ -13,17 +14,21 @@ import java.security.Principal;
 import java.time.OffsetDateTime;
 import java.util.UUID;
 
+import static com.paperflow.adapters.web.WorkspaceAccess.CURRENT_ACCOUNT;
+
 @RestController
 @RequestMapping("/api")
 public class JobController {
     private final JobService jobs;
     private final OriginalImports originals;
     private final JobJson json;
+    private final WorkspaceAccess access;
 
-    public JobController(JobService jobs, OriginalImports originals, JobJson json) {
+    public JobController(JobService jobs, OriginalImports originals, JobJson json, WorkspaceAccess access) {
         this.jobs = jobs;
         this.originals = originals;
         this.json = json;
+        this.access = access;
     }
 
     record StartJob(JobKind kind, java.util.List<String> paperIds, String sourceId, Integer yearFrom, Integer yearTo) {}
@@ -55,9 +60,10 @@ public class JobController {
 
     @PostMapping("/jobs")
     @ResponseStatus(HttpStatus.ACCEPTED)
-    JobView start(@RequestBody StartJob request, Principal actor) {
+    JobView start(@RequestBody StartJob request, @RequestAttribute(CURRENT_ACCOUNT) AccountAccess actor) {
+        access.requireJob(actor, request.kind(), "JOB_SUBMIT", String.valueOf(request.kind()));
         return view(jobs.start(new JobRequest(request.kind(), request.paperIds(), request.sourceId(),
-                request.yearFrom(), request.yearTo()), actor.getName()));
+                request.yearFrom(), request.yearTo()), actor.username()));
     }
 
     @GetMapping("/jobs/{jobId}")
@@ -77,8 +83,9 @@ public class JobController {
 
     @PostMapping("/jobs/{jobId}/retry")
     @ResponseStatus(HttpStatus.ACCEPTED)
-    JobView retry(@PathVariable UUID jobId, Principal actor) {
-        return view(jobs.retry(jobId, actor.getName()));
+    JobView retry(@PathVariable UUID jobId, @RequestAttribute(CURRENT_ACCOUNT) AccountAccess actor) {
+        access.requireJob(actor, jobs.get(jobId).kind(), "JOB_RETRY", jobId.toString());
+        return view(jobs.retry(jobId, actor.username()));
     }
 
     private JobView view(JobSummary job) {

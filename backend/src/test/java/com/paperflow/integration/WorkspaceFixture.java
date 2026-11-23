@@ -2,9 +2,11 @@ package com.paperflow.integration;
 
 import com.sun.net.httpserver.HttpExchange;
 import com.sun.net.httpserver.HttpServer;
+import org.flywaydb.core.Flyway;
 import org.springframework.core.io.ClassPathResource;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.datasource.init.ScriptUtils;
+import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.test.context.DynamicPropertyRegistry;
 
 import java.io.ByteArrayOutputStream;
@@ -72,6 +74,23 @@ final class WorkspaceFixture implements AutoCloseable {
             ScriptUtils.executeSqlScript(connection, new ClassPathResource("legacy.sql"));
             statement.execute("SET search_path TO " + snapshot());
             ScriptUtils.executeSqlScript(connection, new ClassPathResource("snapshot.sql"));
+        }
+    }
+
+    void seedVersionTwoAccount(String username, String oldPassword, UUID jobId) {
+        Flyway.configure().dataSource(jdbcUrl(), user(), password()).table("v2_flyway_schema_history")
+                .baselineOnMigrate(true).baselineVersion("0").target("2").load().migrate();
+        try (var connection = DriverManager.getConnection(jdbcUrl(), user(), password());
+             var account = connection.prepareStatement("INSERT INTO v2_admin (username, password_hash) VALUES (?, ?)");
+             var job = connection.prepareStatement("INSERT INTO v2_job (job_id, kind, username) VALUES (?, 'PARSE', ?)")) {
+            account.setString(1, username);
+            account.setString(2, new BCryptPasswordEncoder(4).encode(oldPassword));
+            account.executeUpdate();
+            job.setObject(1, jobId);
+            job.setString(2, username);
+            job.executeUpdate();
+        } catch (Exception error) {
+            throw new IllegalStateException("Cannot seed a v2 account and its job", error);
         }
     }
 

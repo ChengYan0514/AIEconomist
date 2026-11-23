@@ -2,6 +2,7 @@ import { FileArchive, FileText, UploadCloud } from "lucide-react"
 import { useState, type FormEvent } from "react"
 import { api, errorMessage, jobPath, paperPath, params } from "../api"
 import { Modal, Notice, SourceField, jobKinds } from "../components/shared"
+import { usePermissions } from "../permissions"
 import { Button } from "../components/ui/button"
 import type { Job, JobKind, Paper } from "../types"
 
@@ -88,6 +89,7 @@ export function ReplaceOriginal({ paper, close, done }: { paper: Paper; close: (
 }
 
 export function ProcessPapers({ ids, close }: { ids: string[]; close: () => void }) {
+  const { canJob } = usePermissions()
   const [byRange, setByRange] = useState(ids.length === 0)
   const [source, setSource] = useState("")
   const [busy, setBusy] = useState(false)
@@ -109,7 +111,7 @@ export function ProcessPapers({ ids, close }: { ids: string[]; close: () => void
   return <Modal title="提交论文处理" description="选择阶段和目标。提交后，可在「导入与处理」查看逐项结果。" onClose={close}>
     <form className="modal-body form-stack" onSubmit={submit}>
       {error && <Notice error>{error}</Notice>}
-      <label>处理阶段<select className="field" name="kind">{(["PARSE", "PUBLISH", "MATCH"] as const).map((kind) => <option key={kind} value={kind}>{jobKinds[kind]}</option>)}</select></label>
+      <label>处理阶段<select className="field" name="kind">{(["PARSE", "PUBLISH", "MATCH"] as const).filter(canJob).map((kind) => <option key={kind} value={kind}>{jobKinds[kind]}</option>)}</select></label>
       <div className="segmented">
         <button type="button" aria-pressed={!byRange} onClick={() => setByRange(false)} disabled={!ids.length}>所选论文 {ids.length > 0 && <>({ids.length})</>}</button>
         <button type="button" aria-pressed={byRange} onClick={() => setByRange(true)}>按期刊处理</button>

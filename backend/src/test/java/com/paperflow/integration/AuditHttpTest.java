@@ -18,10 +18,6 @@ import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.test.context.TestConfiguration;
 import org.springframework.context.annotation.Bean;
 import org.springframework.mock.web.MockHttpSession;
-import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
-import org.springframework.security.core.authority.SimpleGrantedAuthority;
-import org.springframework.security.core.context.SecurityContextImpl;
-import org.springframework.security.web.context.HttpSessionSecurityContextRepository;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
 import org.springframework.test.web.servlet.MockMvc;
@@ -122,14 +118,12 @@ class AuditHttpTest {
 
     @Test
     void auditEndpointsRequireSystemAdministratorAndOnlyExposeReads() throws Exception {
-        var nonAdmin = new MockHttpSession();
-        var reader = new UsernamePasswordAuthenticationToken("reader", null,
-                List.of(new SimpleGrantedAuthority("ROLE_READER")));
-        nonAdmin.setAttribute(HttpSessionSecurityContextRepository.SPRING_SECURITY_CONTEXT_KEY, new SecurityContextImpl(reader));
+        var http = new WorkspaceHttp(mvc, json);
+        var reader = http.activate(login(), "audit.reader", "审计只读账号", "READ_ONLY", "reader-personal-password");
         for (String path : List.of("/api/audit-events", "/api/audit-events/1")) {
             mvc.perform(get(path)).andExpect(status().isUnauthorized())
                     .andExpect(jsonPath("$.code").value("AUTH_REQUIRED"));
-            mvc.perform(get(path).session(nonAdmin)).andExpect(status().isForbidden())
+            mvc.perform(get(path).session(reader)).andExpect(status().isForbidden())
                     .andExpect(jsonPath("$.code").value("ACCESS_DENIED"));
         }
         var admin = login();

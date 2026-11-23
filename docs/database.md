@@ -10,7 +10,7 @@
 | v2 迁移历史 | 同一业务 schema 的 `v2_flyway_schema_history` | 由 Flyway 管理，记录版本、脚本、校验和及应用结果。已有非空 schema 可从版本 `0` 建立基线，随后执行 v2 迁移。配置禁用创建 schema 和 `clean`。 |
 | OpenAlex 快照 | 同一 JDBC 数据库的 `dataset_20241125` schema | SQL 带 schema 名执行 `SELECT`。`PAPERFLOW_OPENALEX_SCHEMA` 优先于 `OPENALEX_DB_SCHEMA`。配置校验 schema 名为小写 PostgreSQL 标识符。 |
 
-`V1` 创建七张业务表和 `v2_paper_read` 视图。`V2` 增加审计事件表。旧库和快照通过 `SELECT` 访问。创建视图时，`source`、`original_file`、`original_file_job` 及视图使用的列必须已存在。历史文本和书目表在相关查询时访问。历史论文从兼容视图即时读取，首次写入时按篇登记。旧平台主库和因果库分别使用自己的 `flyway_schema_history` 和 `flyway_causal_schema_history`。 [数据库迁移](../backend/src/main/resources/db/migration/V1__paperflow_v2.sql) · [配置校验](../backend/src/main/java/com/paperflow/main/WorkspaceProperties.java)
+`V1` 创建七张业务表和 `v2_paper_read` 视图。`V2` 增加审计事件表。`V3` 接续 v2 账号并增加用户资料、内置角色和凭据版本。旧库和快照通过 `SELECT` 访问。创建视图时，`source`、`original_file`、`original_file_job` 及视图使用的列必须已存在。历史文本和书目表在相关查询时访问。历史论文从兼容视图即时读取，首次写入时按篇登记。旧平台主库和因果库分别使用自己的 `flyway_schema_history` 和 `flyway_causal_schema_history`。 [数据库迁移](../backend/src/main/resources/db/migration/V1__paperflow_v2.sql) · [配置校验](../backend/src/main/java/com/paperflow/main/WorkspaceProperties.java)
 
 ## v2 表结构
 
@@ -20,11 +20,16 @@
 
 | 列 | 类型与约束 | 用途 |
 | --- | --- | --- |
-| `username` | `varchar(50)`，主键，符合 `^[a-z0-9_.-]{3,50}$` | 规范化的管理员用户名，也是任务的提交人引用。 |
-| `password_hash` | `varchar(100)`，必填 | 管理员密码的 BCrypt 散列。 |
+| `username` | `varchar(50)`，主键，符合 `^[a-z0-9_.-]{3,50}$` | 平台用户的固定用户名，也是任务的提交人引用。 |
+| `password_hash` | `varchar(100)`，必填 | 当前密码的 BCrypt 散列。 |
 | `created_at` | `timestamptz`，必填，默认 `now()` | 账号登记时间。 |
+| `display_name` | `varchar(100)`，必填 | 可编辑的显示名称。旧账号迁移时取原用户名。 |
+| `role` | `varchar(32)`，必填 | 用户的单个角色。迁移时旧账号保留为系统管理员。 |
+| `enabled` | `boolean`，必填，默认 `true` | 账号是否启用。 |
+| `must_change_password` | `boolean`，必填，默认 `false` | 通过用户管理新建的账号需要设置个人密码。 |
+| `credential_version` | `bigint`，必填，默认 `0` | 改密时递增，旧会话登录时保存的版本会失效。 |
 
-启动时可由 `PAPERFLOW_ADMIN_USERNAME` 和 `PAPERFLOW_ADMIN_PASSWORD` 创建指定的缺失账号。登录和密码修改使用本表。管理会话由 Spring Security 的 HTTP 会话保存。 [账号查询](../backend/src/main/java/com/paperflow/adapters/persistence/AdminMapper.java) · [安全配置](../backend/src/main/java/com/paperflow/main/SecurityConfiguration.java)
+启动时可由 `PAPERFLOW_ADMIN_USERNAME` 和 `PAPERFLOW_ADMIN_PASSWORD` 创建指定的缺失系统管理员。V3 在同一表登记所有账号，保留既有用户的散列、用户名和任务外键。角色和启停状态在业务请求时读取。用户资料和对应审计成功事件在同一事务写入，并为角色变更获取 PostgreSQL 事务锁，确保并发修改后仍有启用的系统管理员。 [账号迁移](../backend/src/main/resources/db/migration/V3__platform_users.sql) · [账号查询](../backend/src/main/java/com/paperflow/adapters/persistence/AccountMapper.java) · [安全配置](../backend/src/main/java/com/paperflow/main/SecurityConfiguration.java)
 
 ### `v2_audit_event`
 
@@ -120,7 +125,7 @@
 | `job_id` | `uuid`，主键 | 一次异步操作的 ID。 |
 | `kind` | `varchar(20)`，必填，枚举见下 | 操作类型，也是逐项记录的复合外键组成部分。 |
 | `scope` | `jsonb`，必填，默认空对象 | ZIP 文件名、选中论文数，或来源与年份范围等任务级输入。 |
-| `username` | `varchar(50)`，必填，外键指向 `v2_admin.username` | 提交操作的管理员。 |
+| `username` | `varchar(50)`，必填，外键指向 `v2_admin.username` | 提交操作的平台用户。 |
 | `retry_of` | `uuid`，外键指向同表 `job_id` | 重试时被引用的上一次任务。 |
 | `created_at` | `timestamptz`，必填，默认 `now()` | 任务创建时间。 |
 | `confirmed_at` | `timestamptz` | ZIP 原件导入通过预检后的确认时间。 |

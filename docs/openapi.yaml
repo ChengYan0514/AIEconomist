@@ -6,6 +6,8 @@ info:
     写请求需要 CSRF。先在同一会话中请求 GET /csrf，再将 token 送入 headerName 指定的请求头。
     此规则也适用于登录。保存登录响应更新的 PAPERFLOW_SESSION Cookie。
     受保护的请求在会话无效时可返回 401 AUTH_REQUIRED，CSRF 校验失败时返回 403 ACCESS_DENIED。
+    业务请求按当前账号的权限授权，权限不足返回 403 ACCESS_DENIED。
+    临时密码会话只允许获取 CSRF、检查会话、改密和退出，其他业务请求返回 403 PASSWORD_CHANGE_REQUIRED。
     应用错误使用统一的 Error 响应结构。异步执行结果另见任务项。
 servers:
   - url: /api
@@ -69,8 +71,84 @@ paths:
                 currentPassword: {type: string, format: password}
                 newPassword: {type: string, format: password, minLength: 12, description: UTF-8 编码长度最多 72 字节}
       responses:
-        '204': {description: 密码已更新并结束当前会话}
+        '204': {description: 密码已更新并撤销使用旧凭据建立的会话}
         '400': {$ref: '#/components/responses/Error'}
+  /users:
+    get:
+      operationId: listUsers
+      description: 需要 SYSTEM_MANAGE。搜索同时匹配用户名和显示名称，忽略大小写。用户名升序。
+      parameters:
+        - {name: q, in: query, schema: {type: string, maxLength: 100}}
+        - {name: role, in: query, schema: {$ref: '#/components/schemas/UserRole'}}
+        - {name: status, in: query, schema: {$ref: '#/components/schemas/UserStatus'}}
+        - {$ref: '#/components/parameters/Page'}
+        - {$ref: '#/components/parameters/Size'}
+      responses:
+        '200':
+          description: 平台用户分页
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - {$ref: '#/components/schemas/Page'}
+                  - properties:
+                      items:
+                        type: array
+                        items: {$ref: '#/components/schemas/PlatformUser'}
+        '400': {$ref: '#/components/responses/Error'}
+        '403': {$ref: '#/components/responses/Error'}
+    post:
+      operationId: createUser
+      description: 需要 SYSTEM_MANAGE。用户名去除首尾空白并转为小写，创建后保持固定。
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              allOf:
+                - {$ref: '#/components/schemas/UserProfile'}
+                - type: object
+                  required: [username]
+                  properties:
+                    username: {type: string, description: '规范化后符合 ^[a-z0-9_.-]{3,50}$'}
+      responses:
+        '201':
+          description: 新用户及仅在本次响应中展示的临时密码
+          headers:
+            Cache-Control:
+              schema: {type: string, const: no-store}
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [user, temporaryPassword]
+                properties:
+                  user: {$ref: '#/components/schemas/PlatformUser'}
+                  temporaryPassword: {type: string, format: password, readOnly: true}
+        '400': {$ref: '#/components/responses/Error'}
+        '403': {$ref: '#/components/responses/Error'}
+        '409': {$ref: '#/components/responses/Error', description: USERNAME_TAKEN}
+  /users/{username}:
+    patch:
+      operationId: updateUser
+      description: 需要 SYSTEM_MANAGE。提交显示名称及单个角色，后续请求立即采用新角色。
+      parameters:
+        - {name: username, in: path, required: true, schema: {type: string}}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/UserProfile'}
+      responses:
+        '200':
+          description: 已更新的平台用户
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/PlatformUser'}
+        '400': {$ref: '#/components/responses/Error'}
+        '403': {$ref: '#/components/responses/Error'}
+        '404': {$ref: '#/components/responses/Error'}
+        '409': {$ref: '#/components/responses/Error', description: LAST_SYSTEM_ADMIN}
   /papers:
     get:
       operationId: listPapers
@@ -123,7 +201,7 @@ paths:
       - {name: archived, in: query, schema: {type: boolean, default: false}}
     get:
       operationId: exportPapers
-      description: 服务器完成 CSV 写入和刷新后记录成功事件。已登录的无效请求和导出异常记录为失败，未登录请求返回 401。
+      description: 需要 PAPER_CSV_EXPORT。服务器完成 CSV 写入和刷新后记录成功事件。已登录的无效请求和导出异常记录为失败，权限不足的请求记录为拒绝。
       responses:
         '200':
           description: 导出全部命中行的 UTF-8 CSV
@@ -132,13 +210,15 @@ paths:
               schema: {type: string, format: binary}
         '400': {$ref: '#/components/responses/Error'}
         '401': {$ref: '#/components/responses/Error'}
+        '403': {$ref: '#/components/responses/Error'}
     head:
       operationId: getPaperExportHeaders
-      description: 检查导出响应头。
+      description: 需要 PAPER_CSV_EXPORT。检查导出响应头。
       responses:
         '200': {description: CSV 响应头}
         '400': {$ref: '#/components/responses/Error'}
         '401': {$ref: '#/components/responses/Error'}
+        '403': {$ref: '#/components/responses/Error'}
   /audit-events:
     get:
       operationId: listAuditEvents
@@ -473,14 +553,20 @@ components:
               code: {type: string}
               message: {type: string}
     Session:
-      description: 当前管理员
+      description: 当前平台用户及可用权限。需要改密时 permissions 为空。
       content:
         application/json:
           schema:
             type: object
-            required: [username]
+            required: [username, displayName, role, mustChangePassword, permissions]
             properties:
               username: {type: string}
+              displayName: {type: string}
+              role: {$ref: '#/components/schemas/UserRole'}
+              mustChangePassword: {type: boolean}
+              permissions:
+                type: array
+                items: {$ref: '#/components/schemas/Permission'}
     Paper:
       description: 论文信息
       content:
@@ -492,6 +578,38 @@ components:
         application/json:
           schema: {$ref: '#/components/schemas/Job'}
   schemas:
+    UserRole:
+      type: string
+      enum: [SYSTEM_ADMIN, DATA_MAINTAINER, READ_ONLY]
+      description: 系统管理员、数据维护员、只读用户
+    UserStatus:
+      type: string
+      enum: [ACTIVE, DISABLED]
+    UserProfile:
+      type: object
+      required: [displayName, role]
+      properties:
+        displayName: {type: string, minLength: 1, maxLength: 100}
+        role: {$ref: '#/components/schemas/UserRole'}
+    PlatformUser:
+      allOf:
+        - {$ref: '#/components/schemas/UserProfile'}
+        - type: object
+          required: [username, status, createdAt]
+          properties:
+            username: {type: string}
+            status: {$ref: '#/components/schemas/UserStatus'}
+            createdAt: {type: string, format: date-time}
+    Permission:
+      type: string
+      enum: [PAPER_READ, CONTENT_READ, PAPER_CSV_EXPORT, PAPER_WRITE, JOB_READ, PDF_PARSE, FULL_TEXT_IMPORT, OPENALEX_MANAGE, SYSTEM_MANAGE]
+      description: |
+        PAPER_READ 允许查阅论文书目、关联及出版来源。CONTENT_READ 允许读取原件、已发布全文及资源。
+        PAPER_CSV_EXPORT 单独授权 CSV 下载。PAPER_WRITE 允许导入、编辑、替换、归档恢复及原件导入任务。
+        JOB_READ 允许读任务。PDF_PARSE、FULL_TEXT_IMPORT 分别允许提交或重试相应任务。
+        OPENALEX_MANAGE 允许元数据导入、匹配和候选复核。SYSTEM_MANAGE 允许管理用户及读取审计日志。
+        系统管理员拥有全部权限。数据维护员拥有除 PAPER_CSV_EXPORT 和 SYSTEM_MANAGE 外的权限。
+        只读用户拥有 PAPER_READ 和 CONTENT_READ。任务提交和重试基于任务类型校验执行及 JOB_READ 权限。
     Page:
       type: object
       required: [items, page, size, total]
@@ -510,9 +628,9 @@ components:
         eventId: {type: integer, format: int64}
         occurredAt: {type: string, format: date-time}
         actor: {type: string}
-        action: {type: string, description: CSV 导出为 PAPER_CSV_EXPORT}
-        objectType: {type: string, description: CSV 导出的对象类型为 PAPER_COLLECTION}
-        objectId: {type: string, description: CSV 导出的对象 ID 为 papers}
+        action: {type: string, description: 含 PAPER_CSV_EXPORT、USER_CREATE、USER_DISPLAY_NAME_CHANGE 和 USER_ROLE_CHANGE}
+        objectType: {type: string, description: CSV 导出的对象类型为 PAPER_COLLECTION，用户变更的对象类型为 USER}
+        objectId: {type: string, description: CSV 导出的对象 ID 为 papers，用户变更的对象 ID 为用户名}
         outcome: {$ref: '#/components/schemas/AuditOutcome'}
     Metadata:
       type: object
