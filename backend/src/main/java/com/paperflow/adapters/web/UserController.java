@@ -28,7 +28,8 @@ public class UserController {
     }
     record CreateUser(String username, String displayName, Role role) {}
     record UpdateUser(String displayName, Role role) {}
-    record CreatedUser(UserView user, String temporaryPassword) {}
+    record SetUserStatus(PlatformUser.Status status) {}
+    record IssuedPassword(UserView user, String temporaryPassword) {}
 
     @GetMapping
     Page<UserView> list(@RequestParam(required = false) String q, @RequestParam(required = false) Role role,
@@ -39,14 +40,28 @@ public class UserController {
     }
 
     @PostMapping
-    ResponseEntity<CreatedUser> create(@RequestBody CreateUser request, Principal actor) {
+    ResponseEntity<IssuedPassword> create(@RequestBody CreateUser request, Principal actor) {
         var created = users.create(actor.getName(), request.username(), request.displayName(), request.role());
-        return ResponseEntity.status(HttpStatus.CREATED).cacheControl(CacheControl.noStore())
-                .body(new CreatedUser(UserView.from(created.user()), created.temporaryPassword()));
+        return passwordResponse(HttpStatus.CREATED, created);
     }
 
     @PatchMapping("/{username}")
     UserView update(@PathVariable String username, @RequestBody UpdateUser request, Principal actor) {
         return UserView.from(users.update(actor.getName(), username, request.displayName(), request.role()));
+    }
+
+    @PutMapping("/{username}/status")
+    UserView setStatus(@PathVariable String username, @RequestBody SetUserStatus request, Principal actor) {
+        return UserView.from(users.setStatus(actor.getName(), username, request.status()));
+    }
+
+    @PostMapping("/{username}/reset-password")
+    ResponseEntity<IssuedPassword> resetPassword(@PathVariable String username, Principal actor) {
+        return passwordResponse(HttpStatus.OK, users.resetPassword(actor.getName(), username));
+    }
+
+    private ResponseEntity<IssuedPassword> passwordResponse(HttpStatus status, UserManagement.IssuedPassword issued) {
+        return ResponseEntity.status(status).cacheControl(CacheControl.noStore())
+                .body(new IssuedPassword(UserView.from(issued.user()), issued.temporaryPassword()));
     }
 }

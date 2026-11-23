@@ -17,9 +17,11 @@ public interface Accounts {
     long count(String query, Role role, Boolean enabled);
     int create(String username, String displayName, String passwordHash, Role role, boolean mustChangePassword);
     int changePassword(String username, long credentialVersion, String passwordHash);
+    void resetPassword(String username, String passwordHash);
     boolean lockManagement();
     int enabledAdministrators();
     void updateProfile(String username, String displayName, Role role);
+    void setEnabled(String username, boolean enabled);
 
     static String normalizeUsername(String username) {
         return username == null ? "" : username.strip().toLowerCase(Locale.ROOT);

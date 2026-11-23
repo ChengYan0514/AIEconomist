@@ -9,14 +9,16 @@ import type { Page } from "./types"
 
 type Status = "ACTIVE" | "DISABLED"
 type User = { username: string; displayName: string; role: Role; status: Status; createdAt: string }
-type Created = { user: User; temporaryPassword: string }
+export type IssuedPassword = { user: User; temporaryPassword: string }
+type UserAction = { user: User; action: "status" | "reset" }
 const size = 20
 const initialFilters = { q: "", role: "", status: "" }
 
-export function Users({ onChange }: { onChange: () => void }) {
+export function Users({ onChange, onPasswordReset }: { onChange: () => void; onPasswordReset: (issued: IssuedPassword) => void }) {
   const [filters, setFilters] = useState(() => ({ ...initialFilters, q: new URLSearchParams(window.location.search).get("q") ?? "" }))
   const [page, setPage] = useState(0)
   const [editing, setEditing] = useState<User | "new" | null>(null)
+  const [managing, setManaging] = useState<UserAction | null>(null)
   const result = useQuery<Page<User>>("/users" + params({ ...filters, page, size }))
   const rows = result.data?.items ?? []
 
@@ -62,14 +64,22 @@ export function Users({ onChange }: { onChange: () => void }) {
                 <td className="table-date"><time dateTime={user.createdAt}>
                   {new Date(user.createdAt).toLocaleString("zh-CN", { hour12: false })}
                 </time></td>
-                <td><Button type="button" variant="ghost" size="sm" aria-label={"编辑 " + user.username}
-                  onClick={() => setEditing(user)}>编辑</Button></td>
+                <td><div className="flex flex-wrap gap-1">
+                  <Button type="button" variant="ghost" size="sm" aria-label={"编辑 " + user.username}
+                    onClick={() => setEditing(user)}>编辑</Button>
+                  <Button type="button" variant="ghost" size="sm"
+                    aria-label={(user.status === "ACTIVE" ? "停用 " : "恢复 ") + user.username}
+                    onClick={() => setManaging({ user, action: "status" })}>{user.status === "ACTIVE" ? "停用" : "恢复"}</Button>
+                  <Button type="button" variant="ghost" size="sm" aria-label={"重置密码 " + user.username}
+                    onClick={() => setManaging({ user, action: "reset" })}>重置密码</Button>
+                </div></td>
               </tr>)}</tbody>
             </table>
           </div>}
       {result.data && !result.error && <Pagination page={page} size={size} total={result.data.total} change={setPage} />}
     </section>
     {editing && <UserForm user={editing === "new" ? undefined : editing} close={() => setEditing(null)} updated={updated} />}
+    {managing && <UserActionDialog {...managing} close={() => setManaging(null)} updated={updated} onPasswordReset={onPasswordReset} />}
   </>
 }
 
@@ -80,7 +90,7 @@ function RoleOptions() {
 function UserForm({ user, close, updated }: { user?: User; close: () => void; updated: () => void }) {
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState("")
-  const [created, setCreated] = useState<Created>()
+  const [created, setCreated] = useState<IssuedPassword>()
   async function save(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
     const form = Object.fromEntries(new FormData(event.currentTarget))
@@ -92,7 +102,7 @@ function UserForm({ user, close, updated }: { user?: User; close: () => void; up
         updated()
         close()
       } else {
-        setCreated(await api<Created>("/users", { method: "POST", body: JSON.stringify(form) }))
+        setCreated(await api<IssuedPassword>("/users", { method: "POST", body: JSON.stringify(form) }))
         updated()
       }
     } catch (cause) { setError(errorMessage(cause)) }
@@ -101,12 +111,7 @@ function UserForm({ user, close, updated }: { user?: User; close: () => void; up
 
   return <Modal title={created ? "用户已创建" : user ? "编辑用户" : "新建用户"}
     onClose={() => { if (!busy) close() }}>
-    {created ? <div className="modal-body form-stack">
-      <Notice>请现在保存临时密码并交给 {created.user.displayName}。关闭后无法再次查看。</Notice>
-      <label>临时密码<input className="field mono" readOnly value={created.temporaryPassword}
-        onFocus={(event) => event.currentTarget.select()} /></label>
-      <div className="modal-actions"><Button onClick={close}>完成</Button></div>
-    </div> : <form className="modal-body form-stack" onSubmit={save}>
+    {created ? <PasswordNotice issued={created} close={close} /> : <form className="modal-body form-stack" onSubmit={save}>
       {error && <Notice error>{error}</Notice>}
       {user ? <label>用户名<input className="field" readOnly value={user.username} /></label> :
         <label>用户名<input className="field" name="username" required minLength={3} maxLength={50}
@@ -119,4 +124,57 @@ function UserForm({ user, close, updated }: { user?: User; close: () => void; up
       </div>
     </form>}
   </Modal>
+}
+
+function UserActionDialog({ user, action, close, updated, onPasswordReset }: UserAction & {
+  close: () => void; updated: () => void; onPasswordReset: (issued: IssuedPassword) => void
+}) {
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState("")
+  const disabling = user.status === "ACTIVE"
+  const label = action === "reset" ? "重置" : disabling ? "停用" : "恢复"
+  async function submit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault()
+    setBusy(true)
+    setError("")
+    const path = "/users/" + encodeURIComponent(user.username)
+    try {
+      if (action === "reset") {
+        const issued = await api<IssuedPassword>(path + "/reset-password", { method: "POST" })
+        close()
+        onPasswordReset(issued)
+      } else {
+        await api(path + "/status", { method: "PUT", body: JSON.stringify({ status: disabling ? "DISABLED" : "ACTIVE" }) })
+        close()
+        updated()
+      }
+    } catch (cause) { setError(errorMessage(cause)) }
+    finally { setBusy(false) }
+  }
+
+  return <Modal title={action === "reset" ? "重置用户密码" : label + "用户"} onClose={() => { if (!busy) close() }}>
+    <form className="modal-body form-stack" onSubmit={submit}>
+      {error && <Notice error>{error}</Notice>}
+      <p>{user.displayName} <span className="mono muted">{user.username}</span></p>
+      <p className="muted">{action === "reset" ? "旧密码和会话将失效。账号启用时，用户可以用新临时密码登录并设置个人密码。" :
+        disabling ? "该用户的会话将立即失效，已提交的任务会继续处理。" : "该用户可以重新登录。"}</p>
+      <div className="modal-actions">
+        <Button type="button" variant="outline" disabled={busy} onClick={close}>取消</Button>
+        <Button disabled={busy}>{"确认" + label}</Button>
+      </div>
+    </form>
+  </Modal>
+}
+
+export function ResetPasswordNotice({ issued, close }: { issued: IssuedPassword; close: () => void }) {
+  return <Modal title="密码已重置" onClose={close}><PasswordNotice issued={issued} close={close} /></Modal>
+}
+
+function PasswordNotice({ issued, close }: { issued: IssuedPassword; close: () => void }) {
+  return <div className="modal-body form-stack">
+    <Notice>请现在保存临时密码并交给 {issued.user.displayName}。关闭后无法再次查看。</Notice>
+    <label>临时密码<input className="field mono" readOnly value={issued.temporaryPassword}
+      onFocus={(event) => event.currentTarget.select()} /></label>
+    <div className="modal-actions"><Button onClick={close}>完成</Button></div>
+  </div>
 }
