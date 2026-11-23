@@ -17,6 +17,7 @@ import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMock
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.test.context.TestConfiguration;
 import org.springframework.context.annotation.Bean;
+import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.mock.web.MockHttpSession;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
@@ -39,6 +40,7 @@ class AuditHttpTest {
 
     @Autowired MockMvc mvc;
     @Autowired ObjectMapper json;
+    @Autowired JdbcTemplate jdbc;
 
     @DynamicPropertySource
     static void configuration(DynamicPropertyRegistry properties) {
@@ -114,6 +116,41 @@ class AuditHttpTest {
                 .andExpect(status().isBadRequest()).andExpect(jsonPath("$.code").value("INVALID_INPUT"));
         mvc.perform(get("/api/audit-events").session(admin).param("objectId", "other"))
                 .andExpect(status().isOk()).andExpect(jsonPath("$.total").value(0));
+    }
+
+    @Test
+    void csvFailuresKeepTheirOriginalErrorsWhenAuditCannotBeWritten() throws Exception {
+        var admin = login();
+        jdbc.execute("""
+                ALTER TABLE v2_audit_event ADD CONSTRAINT test_reject_csv_failure
+                CHECK (action <> 'PAPER_CSV_EXPORT' OR outcome <> 'FAILED') NOT VALID
+                """);
+        try {
+            var export = mvc.perform(get("/api/papers/export").session(admin).header("Audit-Test-Fail-Flush", "true"))
+                    .andExpect(request().asyncStarted()).andReturn();
+            assertThat(export.getAsyncResult()).isInstanceOfSatisfying(IOException.class,
+                    error -> assertThat(error).hasRootCauseMessage("fixture flush failure"));
+            mvc.perform(get("/api/papers/export").session(admin).param("yearFrom", "invalid-year"))
+                    .andExpect(status().isBadRequest()).andExpect(jsonPath("$.code").value("INVALID_INPUT"));
+        } finally {
+            jdbc.execute("ALTER TABLE v2_audit_event DROP CONSTRAINT test_reject_csv_failure");
+        }
+    }
+
+    @Test
+    void authorizationStillReturnsForbiddenWhenTheDenialCannotBeAudited() throws Exception {
+        var http = new WorkspaceHttp(mvc, json);
+        var reader = http.activate(login(), "audit.denial", "审计拒绝账号", "READ_ONLY", "reader-personal-password");
+        jdbc.execute("""
+                ALTER TABLE v2_audit_event ADD CONSTRAINT test_reject_denial
+                CHECK (outcome <> 'DENIED') NOT VALID
+                """);
+        try {
+            mvc.perform(get("/api/papers/export").session(reader))
+                    .andExpect(status().isForbidden()).andExpect(jsonPath("$.code").value("ACCESS_DENIED"));
+        } finally {
+            jdbc.execute("ALTER TABLE v2_audit_event DROP CONSTRAINT test_reject_denial");
+        }
     }
 
     @Test

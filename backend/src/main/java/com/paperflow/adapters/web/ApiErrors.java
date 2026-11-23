@@ -20,6 +20,7 @@ import org.springframework.web.bind.annotation.RestControllerAdvice;
 import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException;
 import org.springframework.web.multipart.MaxUploadSizeExceededException;
 
+import java.io.IOException;
 import java.nio.file.NoSuchFileException;
 
 @RestControllerAdvice
@@ -48,12 +49,12 @@ public class ApiErrors {
 
     @ExceptionHandler(PaperNotFound.class)
     public ResponseEntity<Error> paperNotFound(PaperNotFound error) {
-        return response(HttpStatus.NOT_FOUND, "PAPER_NOT_FOUND", error.getMessage());
+        return response(HttpStatus.NOT_FOUND, code(error), error.getMessage());
     }
 
     @ExceptionHandler(JobNotFound.class)
     public ResponseEntity<Error> jobNotFound(JobNotFound error) {
-        return response(HttpStatus.NOT_FOUND, "JOB_NOT_FOUND", error.getMessage());
+        return response(HttpStatus.NOT_FOUND, code(error), error.getMessage());
     }
 
     @ExceptionHandler(AuditEventNotFound.class)
@@ -62,28 +63,28 @@ public class ApiErrors {
     }
 
     @ExceptionHandler(NoSuchFileException.class)
-    public ResponseEntity<Error> missingFile() {
-        return response(HttpStatus.NOT_FOUND, "FILE_MISSING", "已登记的文件当前不可读取");
+    public ResponseEntity<Error> missingFile(NoSuchFileException error) {
+        return response(HttpStatus.NOT_FOUND, code(error), "已登记的文件当前不可读取");
     }
 
     @ExceptionHandler(PaperConflict.class)
     public ResponseEntity<Error> paperConflict(PaperConflict error) {
-        return response(HttpStatus.CONFLICT, error.code(), error.getMessage());
+        return response(HttpStatus.CONFLICT, code(error), error.getMessage());
     }
 
     @ExceptionHandler(JobConflict.class)
     public ResponseEntity<Error> jobConflict(JobConflict error) {
-        return response(HttpStatus.CONFLICT, "JOB_CONFLICT", error.getMessage());
+        return response(HttpStatus.CONFLICT, code(error), error.getMessage());
     }
 
     @ExceptionHandler(DuplicateKeyException.class)
-    public ResponseEntity<Error> conflict() {
-        return response(HttpStatus.CONFLICT, "CONCURRENT_CHANGE", "数据已更新，请刷新后重试");
+    public ResponseEntity<Error> conflict(DuplicateKeyException error) {
+        return response(HttpStatus.CONFLICT, code(error), "数据已更新，请刷新后重试");
     }
 
     @ExceptionHandler(IllegalArgumentException.class)
     public ResponseEntity<Error> invalid(IllegalArgumentException error) {
-        return response(HttpStatus.BAD_REQUEST, "INVALID_INPUT", error.getMessage());
+        return response(HttpStatus.BAD_REQUEST, code(error), error.getMessage());
     }
 
     @ExceptionHandler({HttpMessageNotReadableException.class, MissingRequestValueException.class, org.springframework.validation.BindException.class,
@@ -106,6 +107,18 @@ public class ApiErrors {
     public ResponseEntity<Error> unexpected(Exception error) {
         log.error("API request failed", error);
         return response(HttpStatus.INTERNAL_SERVER_ERROR, "INTERNAL", "暂时无法完成操作，请稍后重试");
+    }
+
+    static String code(Exception error) {
+        if (error instanceof PaperConflict conflict) return conflict.code();
+        if (error instanceof PaperNotFound) return "PAPER_NOT_FOUND";
+        if (error instanceof JobConflict) return "JOB_CONFLICT";
+        if (error instanceof JobNotFound) return "JOB_NOT_FOUND";
+        if (error instanceof DuplicateKeyException) return "CONCURRENT_CHANGE";
+        if (error instanceof IllegalArgumentException) return "INVALID_INPUT";
+        if (error instanceof NoSuchFileException) return "FILE_MISSING";
+        if (error instanceof IOException) return "FILE_PROCESSING_FAILED";
+        return "INTERNAL";
     }
 
     private ResponseEntity<Error> response(HttpStatus status, String code, String message) {

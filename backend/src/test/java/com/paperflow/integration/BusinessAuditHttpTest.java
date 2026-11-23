@@ -20,6 +20,7 @@ import org.springframework.test.web.servlet.request.MockHttpServletRequestBuilde
 
 import javax.sql.DataSource;
 import java.nio.charset.StandardCharsets;
+import java.util.UUID;
 
 import static com.paperflow.integration.WorkspaceFixture.PDF;
 import static org.assertj.core.api.Assertions.assertThat;
@@ -76,6 +77,30 @@ class BusinessAuditHttpTest {
         assertThat(getPaper(id).path("title").asText()).isEqualTo("Private audit title");
         assertThat(rejected.toString() + executed).doesNotContain("unreadable-private.pdf", "private.zip", "Private audit title",
                 "audit-confirmer-password", "workspace-test-password");
+    }
+
+    @Test
+    void auditsInvalidJobRequestsAndRecordsPermissionDenialsOnce() throws Exception {
+        var missingKind = json.createObjectNode();
+        missingKind.putArray("paperIds").add("legacy-001");
+        write(post("/api/jobs"), admin, missingKind, 400);
+        assertThat(audit("jobs", "JOB_SUBMIT", "FAILED", "integration").path("code").asText()).isEqualTo("INVALID_INPUT");
+        String missingJob = UUID.randomUUID().toString();
+        write(post("/api/jobs/{id}/retry", missingJob), admin, null, 404);
+        assertThat(audit(missingJob, "JOB_RETRY", "FAILED", "integration").path("code").asText()).isEqualTo("JOB_NOT_FOUND");
+
+        var role = json.createObjectNode().put("name", "仅查阅处理任务").put("description", "");
+        role.putArray("permissions").add("JOB_READ");
+        String roleId = write(post("/api/roles"), admin, role, 201).path("id").asText();
+        var reader = http.activate(admin, "audit.jobs.reader", "任务查阅员", roleId, "audit-job-reader-password");
+        String job = start("PUBLISH", "legacy-001");
+        var deniedSubmission = missingKind.put("kind", "PUBLISH");
+        write(post("/api/jobs"), reader, deniedSubmission, 403);
+        write(post("/api/jobs/{id}/retry", job), reader, null, 403);
+        audit("PUBLISH", "JOB_SUBMIT", "DENIED", "audit.jobs.reader");
+        audit(job, "JOB_RETRY", "DENIED", "audit.jobs.reader");
+        mvc.perform(get("/api/audit-events").session(admin).param("actor", "audit.jobs.reader").param("outcome", "FAILED"))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.total").value(0));
     }
 
     @Test

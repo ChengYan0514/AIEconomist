@@ -2,14 +2,7 @@ package com.paperflow.adapters.web;
 
 import com.paperflow.audit.AuditLog;
 import com.paperflow.audit.model.AuditOutcome;
-import com.paperflow.job.JobConflict;
-import com.paperflow.job.JobNotFound;
-import com.paperflow.paper.model.PaperConflict;
-import com.paperflow.paper.model.PaperNotFound;
-import org.springframework.dao.DuplicateKeyException;
 
-import java.io.IOException;
-import java.nio.file.NoSuchFileException;
 import java.util.Map;
 
 public final class AuditAttempt {
@@ -22,27 +15,23 @@ public final class AuditAttempt {
     <T, E extends Exception> T run(String actor, String action, String type, String id, Operation<T, E> operation) throws E {
         try {
             return operation.run();
+        } catch (WorkspaceAccess.Denied denial) {
+            throw denial;
         } catch (Exception error) {
-            try {
+            preserveFailure(error, () -> {
                 String objectId = id.length() > 255 || id.indexOf('\0') >= 0 ? "unknown" : id;
-                audit.record(actor, action, type, objectId, AuditOutcome.FAILED, Map.of("code", code(error)));
-            } catch (RuntimeException auditError) {
-                error.addSuppressed(auditError);
-            }
+                audit.record(actor, action, type, objectId, AuditOutcome.FAILED, Map.of("code", ApiErrors.code(error)));
+            });
             throw error;
         }
     }
 
-    private String code(Exception error) {
-        if (error instanceof PaperConflict conflict) return conflict.code();
-        if (error instanceof PaperNotFound) return "PAPER_NOT_FOUND";
-        if (error instanceof JobConflict) return "JOB_CONFLICT";
-        if (error instanceof JobNotFound) return "JOB_NOT_FOUND";
-        if (error instanceof DuplicateKeyException) return "CONCURRENT_CHANGE";
-        if (error instanceof IllegalArgumentException) return "INVALID_INPUT";
-        if (error instanceof NoSuchFileException) return "FILE_MISSING";
-        if (error instanceof IOException) return "FILE_PROCESSING_FAILED";
-        return "INTERNAL";
+    static void preserveFailure(Exception error, Runnable record) {
+        try {
+            record.run();
+        } catch (RuntimeException auditError) {
+            error.addSuppressed(auditError);
+        }
     }
 
     @FunctionalInterface

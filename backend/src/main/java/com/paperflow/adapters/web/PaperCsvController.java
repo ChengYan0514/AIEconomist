@@ -49,7 +49,7 @@ public class PaperCsvController {
             if (errors.hasErrors()) throw new BindException(errors);
             filter = criteria.toFilter();
         } catch (BindException | IllegalArgumentException error) {
-            record(actor, AuditOutcome.FAILED, Map.of("code", "INVALID_INPUT"));
+            recordFailure(actor, "INVALID_INPUT", error);
             throw error;
         }
         return csvResponse().body(output -> stream(output, filter, actor));
@@ -75,10 +75,11 @@ public class PaperCsvController {
             rows = papers.export(filter, paper -> writeRow(csv, paper));
             csv.flush();
         } catch (UncheckedIOException error) {
-            record(actor, AuditOutcome.FAILED, Map.of("code", "EXPORT_FAILED"));
-            throw error.getCause();
+            IOException failure = error.getCause();
+            recordFailure(actor, "EXPORT_FAILED", failure);
+            throw failure;
         } catch (IOException | RuntimeException error) {
-            record(actor, AuditOutcome.FAILED, Map.of("code", "EXPORT_FAILED"));
+            recordFailure(actor, "EXPORT_FAILED", error);
             throw error;
         }
         record(actor, AuditOutcome.SUCCEEDED, summary(filter, rows));
@@ -86,6 +87,10 @@ public class PaperCsvController {
 
     private void record(String actor, AuditOutcome outcome, Map<String, Object> summary) {
         audit.record(actor, "PAPER_CSV_EXPORT", "PAPER_COLLECTION", "papers", outcome, summary);
+    }
+
+    private void recordFailure(String actor, String code, Exception error) {
+        AuditAttempt.preserveFailure(error, () -> record(actor, AuditOutcome.FAILED, Map.of("code", code)));
     }
 
     private Map<String, Object> summary(PaperFilter filter, long rows) {

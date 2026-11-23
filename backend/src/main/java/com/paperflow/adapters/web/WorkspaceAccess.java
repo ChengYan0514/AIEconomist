@@ -105,8 +105,8 @@ public final class WorkspaceAccess {
 
     private Denied denied(AccountAccess access, Permission permission, String action, String objectType, String objectId) {
         var denial = new Denied(access.mustChangePassword());
-        audit.record(access.username(), action, objectType, objectId, AuditOutcome.DENIED,
-                Map.of("code", denial.code(), "permission", permission.name()));
+        AuditAttempt.preserveFailure(denial, () -> audit.record(access.username(), action, objectType, objectId,
+                AuditOutcome.DENIED, Map.of("code", denial.code(), "permission", permission.name())));
         return denial;
     }
 

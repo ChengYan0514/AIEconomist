@@ -68,10 +68,11 @@ public class JobController {
     @PostMapping("/jobs")
     @ResponseStatus(HttpStatus.ACCEPTED)
     JobView start(@RequestBody StartJob request, @RequestAttribute(CURRENT_ACCOUNT) AccountAccess actor) {
-        access.requireJob(actor, request.kind(), "JOB_SUBMIT", String.valueOf(request.kind()));
-        return view(audit.run(actor.username(), "JOB_SUBMIT", "JOB_COLLECTION", "jobs",
-                () -> jobs.start(new JobRequest(request.kind(), request.paperIds(), request.sourceId(),
-                        request.yearFrom(), request.yearTo()), actor.username())));
+        return view(audit.run(actor.username(), "JOB_SUBMIT", "JOB_COLLECTION", "jobs", () -> {
+            access.requireJob(actor, request.kind(), "JOB_SUBMIT", String.valueOf(request.kind()));
+            return jobs.start(new JobRequest(request.kind(), request.paperIds(), request.sourceId(),
+                    request.yearFrom(), request.yearTo()), actor.username());
+        }));
     }
 
     @GetMapping("/jobs/{jobId}")
@@ -98,9 +99,10 @@ public class JobController {
     @PostMapping("/jobs/{jobId}/retry")
     @ResponseStatus(HttpStatus.ACCEPTED)
     JobView retry(@PathVariable UUID jobId, @RequestAttribute(CURRENT_ACCOUNT) AccountAccess actor) {
-        access.requireJob(actor, jobs.get(jobId).kind(), "JOB_RETRY", jobId.toString());
-        return view(audit.run(actor.username(), "JOB_RETRY", "JOB", jobId.toString(),
-                () -> jobs.retry(jobId, actor.username())));
+        return view(audit.run(actor.username(), "JOB_RETRY", "JOB", jobId.toString(), () -> {
+            access.requireJob(actor, jobs.get(jobId).kind(), "JOB_RETRY", jobId.toString());
+            return jobs.retry(jobId, actor.username());
+        }));
     }
 
     private JobView view(JobSummary job) {
