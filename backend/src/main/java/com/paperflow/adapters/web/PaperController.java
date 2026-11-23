@@ -10,16 +10,19 @@ import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
 
 import java.io.IOException;
+import java.security.Principal;
 
 @RestController
 @RequestMapping("/api/papers")
 public class PaperController {
     private final PaperService papers;
     private final FileStorage files;
+    private final AuditAttempt audit;
 
-    public PaperController(PaperService papers, FileStorage files) {
+    public PaperController(PaperService papers, FileStorage files, AuditAttempt audit) {
         this.papers = papers;
         this.files = files;
+        this.audit = audit;
     }
 
     record MetadataRequest(String sourceId, Integer year, String title, String authors, String doi, String url,
@@ -46,33 +49,40 @@ public class PaperController {
 
     @PostMapping(consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
     @ResponseStatus(HttpStatus.CREATED)
-    PaperView upload(@ModelAttribute MetadataRequest request, @RequestParam MultipartFile file) throws IOException {
+    PaperView upload(@ModelAttribute MetadataRequest request, @RequestParam MultipartFile file, Principal actor) throws IOException {
+        var metadata = audit.run(actor.getName(), "PAPER_IMPORT", "PAPER_COLLECTION", "papers", request::toMetadata);
         try (var input = file.getInputStream()) {
-            return view(papers.create(request.toMetadata(), input));
+            return view(audit.run(actor.getName(), "PAPER_IMPORT", "PAPER", metadata.paperId(),
+                    () -> papers.create(metadata, input, actor.getName())));
         }
     }
 
     @PatchMapping("/{paperId}")
-    PaperView edit(@PathVariable String paperId, @RequestBody MetadataRequest request) {
-        if (request.version() == null) throw new IllegalArgumentException("缺少论文版本");
-        return view(papers.edit(paperId, request.version(), request.toMetadata()));
+    PaperView edit(@PathVariable String paperId, @RequestBody MetadataRequest request, Principal actor) {
+        return view(audit.run(actor.getName(), "PAPER_EDIT", "PAPER", paperId, () -> {
+            if (request.version() == null) throw new IllegalArgumentException("缺少论文版本");
+            return papers.edit(paperId, request.version(), request.toMetadata(), actor.getName());
+        }));
     }
 
     @PostMapping("/{paperId}/archive")
-    PaperView archive(@PathVariable String paperId, @RequestParam long version) {
-        return view(papers.archive(paperId, version, true));
+    PaperView archive(@PathVariable String paperId, @RequestParam long version, Principal actor) {
+        return view(audit.run(actor.getName(), "PAPER_ARCHIVE", "PAPER", paperId,
+                () -> papers.archive(paperId, version, true, actor.getName())));
     }
 
     @DeleteMapping("/{paperId}/archive")
-    PaperView restore(@PathVariable String paperId, @RequestParam long version) {
-        return view(papers.archive(paperId, version, false));
+    PaperView restore(@PathVariable String paperId, @RequestParam long version, Principal actor) {
+        return view(audit.run(actor.getName(), "PAPER_RESTORE", "PAPER", paperId,
+                () -> papers.archive(paperId, version, false, actor.getName())));
     }
 
     @PutMapping(path = "/{paperId}/file", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
-    PaperView replace(@PathVariable String paperId, @RequestParam long version, @RequestParam MultipartFile file)
+    PaperView replace(@PathVariable String paperId, @RequestParam long version, @RequestParam MultipartFile file, Principal actor)
             throws IOException {
         try (var input = file.getInputStream()) {
-            return view(papers.replace(paperId, version, input));
+            return view(audit.run(actor.getName(), "PAPER_REPLACE", "PAPER", paperId,
+                    () -> papers.replace(paperId, version, input, actor.getName())));
         }
     }
 

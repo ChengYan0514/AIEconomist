@@ -1,5 +1,7 @@
 package com.paperflow.openalex;
 
+import com.paperflow.audit.AuditLog;
+import com.paperflow.audit.model.AuditOutcome;
 import com.paperflow.paper.manage.PaperService;
 import com.paperflow.paper.model.Paper;
 import com.paperflow.paper.model.PaperConflict;
@@ -9,19 +11,23 @@ import org.springframework.transaction.support.TransactionTemplate;
 
 import java.util.Arrays;
 import java.util.List;
+import java.util.Map;
 import java.util.Objects;
+import java.util.function.Consumer;
 
 public final class OpenAlexService {
     private final OpenAlexStore catalog;
     private final PaperService papers;
     private final TransactionTemplate transactions;
     private final String schema;
+    private final AuditLog audit;
 
-    public OpenAlexService(OpenAlexStore catalog, PaperService papers, TransactionTemplate transactions, String schema) {
+    public OpenAlexService(OpenAlexStore catalog, PaperService papers, TransactionTemplate transactions, String schema, AuditLog audit) {
         this.catalog = catalog;
         this.papers = papers;
         this.transactions = transactions;
         this.schema = schema;
+        this.audit = audit;
     }
 
     public List<Source> sources(String q) {
@@ -46,7 +52,7 @@ public final class OpenAlexService {
         }
     }
 
-    public MatchResult match(String id, long expectedVersion, Runnable checkClaim) {
+    public MatchResult match(String id, long expectedVersion, Runnable checkClaim, Consumer<MatchResult> afterMatch) {
         Paper paper = papers.get(id);
         paper.requireActive();
         if (paper.matchedWorkId() != null) return new MatchResult("已有关联", List.of(), false);
@@ -55,21 +61,24 @@ public final class OpenAlexService {
         if (proposals.isEmpty()) return new MatchResult("未找到匹配的 OpenAlex 作品", proposals, false);
         if (proposals.size() > 1) return new MatchResult("找到多个候选，请确认关联", proposals, false);
         try {
-            bind(id, expectedVersion, proposals.get(0).workId(), checkClaim);
-            return new MatchResult("匹配成功", proposals, true);
+            var matched = new MatchResult("匹配成功", proposals, true);
+            bind(id, expectedVersion, proposals.get(0).workId(), checkClaim, result -> afterMatch.accept(matched));
+            return matched;
         } catch (PaperConflict conflict) {
             if (!"WORK_ALREADY_BOUND".equals(conflict.code())) throw conflict;
             return new MatchResult("候选作品已有论文关联", List.of(), false);
         }
     }
 
-    public Paper confirm(String id, long expectedVersion, String workId) {
+    public Paper confirm(String id, long expectedVersion, String workId, String actor) {
         Paper paper = papers.get(id);
         paper.requireCurrent(expectedVersion);
         if (workId == null || candidates(paper).stream().noneMatch(work -> work.workId().equals(workId))) {
             throw new PaperConflict("CANDIDATE_MISSING", "候选已变化，请重新匹配");
         }
-        return bind(id, expectedVersion, workId, () -> {});
+        return bind(id, expectedVersion, workId, () -> {}, updated ->
+                audit.record(actor, "PAPER_MATCH_CONFIRM", "PAPER", id, AuditOutcome.SUCCEEDED,
+                        Map.of("workId", updated.matchedWorkId(), "version", updated.version())));
     }
 
     private List<Work> candidates(Paper paper) {
@@ -88,7 +97,7 @@ public final class OpenAlexService {
                 .toList();
     }
 
-    private Paper bind(String id, long version, String workId, Runnable checkClaim) {
+    private Paper bind(String id, long version, String workId, Runnable checkClaim, Consumer<Paper> afterBind) {
         try {
             return transactions.execute(status -> {
                 checkClaim.run();
@@ -98,7 +107,9 @@ public final class OpenAlexService {
                 if ((current.matchedWorkId() != null && !current.matchedWorkId().equals(workId)) ||
                         (owner != null && !Objects.equals(owner, id))) throw owned();
                 catalog.bind(id, workId);
-                return papers.get(id);
+                Paper updated = papers.get(id);
+                afterBind.accept(updated);
+                return updated;
             });
         } catch (DuplicateKeyException error) {
             throw owned();

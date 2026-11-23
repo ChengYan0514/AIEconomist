@@ -75,6 +75,11 @@ class WorkspaceTest {
         assertThat(edited.path("matchedWorkId").asText()).isEqualTo("W009");
         assertThat(edited.path("paperId").asText()).isEqualTo("legacy-001");
         assertThat(jdbc.queryForObject("SELECT paper_title FROM original_file", String.class)).isEqualTo("Legacy paper");
+        assertThat(auditSummary("PAPER_EDIT", "legacy-001", "SUCCEEDED").path("changedFields").toString())
+                .contains("title").doesNotContain("Updated legacy title");
+        write(patch("/api/papers/legacy-001"), edit, 409);
+        assertThat(auditSummary("PAPER_EDIT", "legacy-001", "FAILED").toString())
+                .isEqualTo(json.createObjectNode().put("code", "PAPER_CHANGED").toString());
     }
 
     private String upload(String title, String doi) throws Exception {
@@ -108,7 +113,10 @@ class WorkspaceTest {
         String retry = write(post("/api/jobs/" + parse + "/retry"), null, 202).path("jobId").asText();
         await(retry, "SUCCEEDED");
         mvc.perform(get("/api/papers/" + paper).session(session)).andExpect(jsonPath("$.status").value("READY"));
-        await(start("PUBLISH", paper), "SUCCEEDED");
+        String publish = start("PUBLISH", paper);
+        await(publish, "SUCCEEDED");
+        assertThat(auditSummary("PAPER_PUBLISH", paper, "SUCCEEDED").path("jobId").asText()).isEqualTo(publish);
+        assertThat(auditSummary("JOB_EXECUTE", publish, "SUCCEEDED").toString()).doesNotContain("Parsed body");
         mvc.perform(get("/api/papers/" + paper + "/blocks").session(session))
                 .andExpect(jsonPath("$.items[0].text").value("Parsed body"))
                 .andExpect(jsonPath("$.items[1].type").value("title")).andExpect(jsonPath("$.items[2].page").value(3))
@@ -131,6 +139,7 @@ class WorkspaceTest {
                 .andExpect(jsonPath("$.items[0].result.candidates.length()").value(2));
         var choice = Map.of("workId", "W124", "version", getPaper(ambiguous).path("version").asLong());
         assertThat(write(post("/api/papers/" + ambiguous + "/match"), choice, 200).path("matchedWorkId").asText()).isEqualTo("W124");
+        assertThat(auditSummary("PAPER_MATCH_CONFIRM", ambiguous, "SUCCEEDED").path("workId").asText()).isEqualTo("W124");
     }
 
     private void updateOriginal(String paper) throws Exception {
@@ -140,6 +149,7 @@ class WorkspaceTest {
                 .param("version", String.valueOf(version)), null, 200);
         assertThat(replaced.path("paperId").asText()).isEqualTo(paper);
         assertThat(replaced.path("status").asText()).isEqualTo("UNPROCESSED");
+        assertThat(auditSummary("PAPER_REPLACE", paper, "SUCCEEDED").path("revision").asLong()).isEqualTo(2);
         mvc.perform(get(path + "/blocks").session(session)).andExpect(jsonPath("$.total").value(0));
     }
 
@@ -149,6 +159,8 @@ class WorkspaceTest {
         assertThat(archived.path("archived").asBoolean()).isTrue();
         var restored = write(delete(path).param("version", archived.path("version").asText()), null, 200);
         assertThat(restored.path("archived").asBoolean()).isFalse();
+        assertThat(auditSummary("PAPER_ARCHIVE", paper, "SUCCEEDED").path("version")).isEqualTo(archived.path("version"));
+        assertThat(auditSummary("PAPER_RESTORE", paper, "SUCCEEDED").path("version")).isEqualTo(restored.path("version"));
     }
 
     private String start(String kind, String paper) throws Exception {
@@ -165,6 +177,10 @@ class WorkspaceTest {
         }
         var items = mvc.perform(get("/api/jobs/" + jobId + "/items").session(session)).andReturn();
         assertThat(job.path("state").asText()).withFailMessage("Unexpected job: %s, items: %s", job, body(items)).isEqualTo(state);
+    }
+
+    private JsonNode auditSummary(String action, String id, String outcome) throws Exception {
+        return new WorkspaceHttp(mvc, json).auditSummary(session, id, action, outcome, "integration");
     }
 
     private JsonNode getPaper(String id) throws Exception {

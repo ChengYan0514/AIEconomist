@@ -1,12 +1,11 @@
 import { X } from "lucide-react"
 import { useEffect, useRef, useState, type FormEvent } from "react"
-import { dateLabel, rolePath, useQuery } from "./api"
-import { Chip, Empty, Loading, Notice, Pagination } from "./components/shared"
+import { dateLabel, jobPath, paperPath, rolePath, useQuery } from "./api"
+import { Chip, Empty, jobKinds, jobLabels, Loading, Notice, Pagination } from "./components/shared"
 import { Button } from "./components/ui/button"
 import { SectionHeader } from "./components/workspace"
-import { roles } from "./permissions"
-import type { RoleSummary } from "./roles"
-import type { Page, PaperStatus } from "./types"
+import { roles, usePermissions } from "./permissions"
+import type { JobItemState, JobKind, Page, PaperStatus } from "./types"
 
 type Outcome = "SUCCEEDED" | "FAILED" | "DENIED"
 type AuditEvent = {
@@ -25,10 +24,14 @@ const actions: Record<string, string> = {
   USER_DISPLAY_NAME_CHANGE: "修改显示名称", USER_ROLE_CHANGE: "变更用户角色",
   USER_DISABLE: "停用用户", USER_ENABLE: "恢复用户", USER_PASSWORD_RESET: "重置用户密码", USER_STATUS_CHANGE: "修改用户状态",
   ROLE_CREATE: "创建角色", ROLE_UPDATE: "修改角色", ROLE_DELETE: "删除角色",
-  API_ACCESS: "访问 API", JOB_SUBMIT: "提交任务", JOB_RETRY: "重试任务",
+  API_ACCESS: "访问 API", JOB_PREFLIGHT: "ZIP 预检", JOB_SUBMIT: "提交任务", JOB_RETRY: "重试任务",
+  JOB_ITEM_CHECK: "检查任务项", JOB_EXECUTE: "执行任务项",
+  PAPER_IMPORT: "导入论文", PAPER_EDIT: "编辑论文", PAPER_REPLACE: "更换原件",
+  PAPER_ARCHIVE: "归档论文", PAPER_RESTORE: "恢复论文", PAPER_PUBLISH: "发布全文", PAPER_MATCH_CONFIRM: "确认匹配",
 }
 const objects: Record<string, string> = {
-  PAPER_COLLECTION: "论文库", USER: "用户", USER_COLLECTION: "用户列表", ROLE: "角色", PERMISSION: "权限", JOB: "任务",
+  PAPER: "论文", PAPER_COLLECTION: "论文库", USER: "用户", USER_COLLECTION: "用户列表",
+  ROLE: "角色", PERMISSION: "权限", JOB: "任务", JOB_COLLECTION: "任务列表",
 }
 const outcomes: Record<Outcome, [string, string]> = {
   SUCCEEDED: ["成功", "green"], FAILED: ["失败", "red"], DENIED: ["拒绝", "amber"],
@@ -39,7 +42,11 @@ const summaryLabels: Record<string, string> = {
   roleName: "角色名称", previousRoleName: "原角色名称", permissions: "业务权限", previousPermissions: "原业务权限",
   assignedUsers: "受影响人数", descriptionChanged: "说明已修改",
   exportedRows: "导出行数", searchApplied: "应用了搜索词", archived: "归档视图",
-  sourceId: "来源 ID", yearFrom: "起始年份", yearTo: "结束年份", status: "处理状态", code: "错误代码",
+  sourceId: "来源 ID", yearFrom: "起始年份", yearTo: "结束年份", status: "处理状态", code: "结果代码",
+  version: "论文版本", previousRevision: "原件原修订号", revision: "原件修订号", changedFields: "变更字段", workId: "作品 ID",
+  jobKind: "任务类型", totalItems: "总项数", readyItems: "待确认项数", queuedItems: "排队项数",
+  skippedItems: "跳过项数", failedItems: "失败项数", itemSequence: "任务项序号", itemState: "任务项状态",
+  jobId: "任务 ID", paperId: "论文 ID", retryOf: "原任务 ID",
 }
 const filterNames = ["from", "to", "actor", "action", "objectType", "objectId", "outcome"] as const
 
@@ -166,7 +173,6 @@ function EventDetail({ id, close }: { id: string; close: () => void }) {
   const heading = useRef<HTMLHeadingElement>(null)
   useEffect(() => { heading.current?.focus() }, [])
   const event = result.data
-  const relatedRole = useQuery<RoleSummary>(event?.objectType === "ROLE" && event.action !== "ROLE_DELETE" ? rolePath(event.objectId) : null)
   return <section className="panel audit-detail" aria-labelledby="audit-detail-title">
     <div className="audit-detail-heading">
       <h2 ref={heading} tabIndex={-1} id="audit-detail-title">事件详情</h2>
@@ -186,20 +192,43 @@ function EventDetail({ id, close }: { id: string; close: () => void }) {
           <dl>
             {Object.entries(event.summary).map(([key, value]) => <SummaryItem key={key} name={key} value={value} />)}
           </dl>
-          {event.objectType === "USER" &&
-            <div className="audit-detail-link"><a className="inline-link" href={"/users?q=" + encodeURIComponent(event.objectId)}>查看用户</a></div>}
-          {relatedRole.data && !relatedRole.error &&
-            <div className="audit-detail-link"><a className="inline-link" href={rolePath(relatedRole.data.id)}>查看角色</a></div>}
-          {event.objectType === "PAPER_COLLECTION" && event.objectId === "papers" &&
-            <div className="audit-detail-link"><a className="inline-link" href="/papers">查看论文库</a></div>}
+          <RelatedLinks event={event} />
         </>}
   </section>
+}
+
+function RelatedLinks({ event }: { event: AuditDetail }) {
+  const { can } = usePermissions()
+  const { objectType, objectId, action, summary } = event
+  const paperId = objectType === "PAPER" ? objectId : summary.paperId
+  const jobId = objectType === "JOB" ? objectId : summary.jobId
+  const userPath = objectType === "USER" && can("SYSTEM_MANAGE") ? "/users/" + encodeURIComponent(objectId) : null
+  const role = objectType === "ROLE" && action !== "ROLE_DELETE" && can("SYSTEM_MANAGE") ? rolePath(objectId) : null
+  const paper = typeof paperId === "string" && can("PAPER_READ") ? paperPath(paperId) : null
+  const job = typeof jobId === "string" && /^[0-9a-f-]{36}$/i.test(jobId) && can("JOB_READ") ? jobPath(jobId) : null
+
+  return <>
+    {userPath && <RelatedLink path={userPath} href={"/users?q=" + encodeURIComponent(objectId)} label="查看用户" />}
+    {role && <RelatedLink path={role} label="查看角色" />}
+    {paper && <RelatedLink path={paper} label="查看论文" />}
+    {job && <RelatedLink path={job} label="查看任务" />}
+    {objectType === "PAPER_COLLECTION" && objectId === "papers" && can("PAPER_READ") &&
+      <div className="audit-detail-link"><a className="inline-link" href="/papers">查看论文库</a></div>}
+  </>
+}
+
+function RelatedLink({ path, href = path, label }: { path: string; href?: string; label: string }) {
+  const related = useQuery<unknown>(path)
+  return related.dataPath === path && !related.error &&
+    <div className="audit-detail-link"><a className="inline-link" href={href}>{label}</a></div>
 }
 
 function SummaryItem({ name, value }: { name: string; value: AuditDetail["summary"][string] }) {
   if (name === "accountStatus" || name === "previousAccountStatus") {
     return <><dt>{summaryLabels[name]}</dt><dd>{value === "ACTIVE" ? "启用" : "停用"}</dd></>
   }
+  if (name === "jobKind") return <><dt>{summaryLabels[name]}</dt><dd>{jobKinds[value as JobKind] ?? value}</dd></>
+  if (name === "itemState") return <><dt>{summaryLabels[name]}</dt><dd>{jobLabels[value as JobItemState]?.[0] ?? value}</dd></>
   const text = Array.isArray(value) ? value.join("、") || "—" : typeof value === "boolean" ? value ? "是" : "否" : value
   return <><dt>{summaryLabels[name] ?? name}</dt><dd>
     {name === "status" ? <Chip status={value as PaperStatus} /> : (name === "role" || name === "previousRole") ? roles[String(value)] ?? text : text}

@@ -56,6 +56,15 @@ final class WorkspaceHttp {
         return data == null ? request : request.contentType("application/json").content(data.toString());
     }
 
+    JsonNode auditSummary(MockHttpSession admin, String object, String action, String outcome, String actor) throws Exception {
+        var events = body(mvc.perform(get("/api/audit-events").session(admin).param("action", action)
+                        .param("actor", actor).param("objectId", object).param("outcome", outcome))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.total").value(1))
+                .andExpect(jsonPath("$.items[0].occurredAt").isString()).andReturn());
+        return body(mvc.perform(get("/api/audit-events/{id}", events.path("items").get(0).path("eventId").asLong())
+                .session(admin)).andExpect(status().isOk()).andReturn()).path("summary");
+    }
+
     JsonNode body(MvcResult result) throws Exception {
         return json.readTree(result.getResponse().getContentAsByteArray());
     }

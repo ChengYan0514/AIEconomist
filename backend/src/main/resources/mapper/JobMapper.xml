@@ -94,22 +94,26 @@
             RETURNING i.*
         ) SELECT <include refid="itemFields"/> FROM claimed
     </select>
-    <update id="expireClaims">
+    <select id="expireClaims" resultType="com.paperflow.job.JobItem" affectData="true" flushCache="true">
         UPDATE v2_job_item SET state = 'FAILED', claim_until = NULL, finished_at = now(), message = '任务执行中断，可重试'
-        WHERE state = 'RUNNING' AND claim_until &lt; now()
-    </update>
+        WHERE state = 'RUNNING' AND claim_until &lt;= clock_timestamp()
+        RETURNING <include refid="itemFields"/>
+    </select>
+    <select id="username" resultType="string">
+        SELECT username FROM v2_job WHERE job_id = CAST(#{id} AS uuid)
+    </select>
     <select id="claimActive" resultType="boolean">
         SELECT EXISTS(SELECT 1 FROM v2_job_item WHERE job_id = CAST(#{id} AS uuid) AND sequence = #{sequence}
-            AND state = 'RUNNING' AND claim_until &gt; now())
+            AND state = 'RUNNING' AND claim_until &gt; clock_timestamp())
     </select>
     <update id="checkpoint">
         UPDATE v2_job_item SET result = CAST(#{result} AS jsonb)
         WHERE job_id = CAST(#{id} AS uuid) AND sequence = #{sequence}
-              AND state = 'RUNNING' AND claim_until &gt; now()
+              AND state = 'RUNNING' AND claim_until &gt; clock_timestamp()
     </update>
     <update id="finish">
         UPDATE v2_job_item SET state = #{state}, claim_until = NULL, finished_at = now(),
             message = #{message}, result = COALESCE(CAST(#{result} AS jsonb), CASE WHEN kind = 'PARSE' THEN result END)
-        WHERE job_id = CAST(#{id} AS uuid) AND sequence = #{sequence} AND state = 'RUNNING'
+        WHERE job_id = CAST(#{id} AS uuid) AND sequence = #{sequence} AND state = 'RUNNING' AND claim_until &gt; clock_timestamp()
     </update>
 </mapper>

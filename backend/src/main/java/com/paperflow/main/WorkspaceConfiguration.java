@@ -5,10 +5,13 @@ import com.paperflow.adapters.files.FileStorage;
 import com.paperflow.adapters.files.MineruContent;
 import com.paperflow.adapters.files.MineruTasks;
 import com.paperflow.adapters.files.ZipOriginalArchive;
+import com.paperflow.adapters.web.AuditAttempt;
+import com.paperflow.audit.AuditLog;
 import com.paperflow.fulltext.FullTextService;
 import com.paperflow.fulltext.FullTextStore;
 import com.paperflow.fulltext.ParsedContent;
 import com.paperflow.fulltext.PdfParser;
+import com.paperflow.job.JobAudit;
 import com.paperflow.job.JobJson;
 import com.paperflow.job.JobService;
 import com.paperflow.job.JobStore;
@@ -32,14 +35,15 @@ class WorkspaceConfiguration {
     }
 
     @Bean
-    PaperService paperService(PaperStore store, FileStorage files, TransactionTemplate transactions, WorkspaceProperties config) {
-        return new PaperService(store, files, transactions, config.openalexSchema());
+    PaperService paperService(PaperStore store, FileStorage files, TransactionTemplate transactions,
+                              WorkspaceProperties config, AuditLog audit) {
+        return new PaperService(store, files, transactions, config.openalexSchema(), audit);
     }
 
     @Bean
     OpenAlexService openAlexService(OpenAlexStore store, PaperService papers,
-                                   TransactionTemplate transactions, WorkspaceProperties config) {
-        return new OpenAlexService(store, papers, transactions, config.openalexSchema());
+                                   TransactionTemplate transactions, WorkspaceProperties config, AuditLog audit) {
+        return new OpenAlexService(store, papers, transactions, config.openalexSchema(), audit);
     }
 
     @Bean
@@ -69,8 +73,18 @@ class WorkspaceConfiguration {
     }
 
     @Bean
-    JobService jobService(JobStore jobs, PaperService papers, JobJson json, TransactionTemplate transactions) {
-        return new JobService(jobs, papers, json, transactions);
+    AuditAttempt auditAttempt(AuditLog audit) {
+        return new AuditAttempt(audit);
+    }
+
+    @Bean
+    JobAudit jobAudit(AuditLog audit) {
+        return new JobAudit(audit);
+    }
+
+    @Bean
+    JobService jobService(JobStore jobs, PaperService papers, JobJson json, TransactionTemplate transactions, JobAudit audit) {
+        return new JobService(jobs, papers, json, transactions, audit);
     }
 
     @Bean
@@ -80,8 +94,8 @@ class WorkspaceConfiguration {
 
     @Bean
     JobSchedule jobSchedule(JobStore jobs, JobJson json, OriginalImports originals, FullTextService text,
-                            OpenAlexService openAlex, TransactionTemplate transactions, WorkspaceProperties config) {
-        return new JobSchedule(new JobWorker(jobs, json, originals, text, openAlex, transactions, config.mineruTimeout()));
+                            OpenAlexService openAlex, TransactionTemplate transactions, WorkspaceProperties config, JobAudit audit) {
+        return new JobSchedule(new JobWorker(jobs, json, originals, text, openAlex, transactions, config.mineruTimeout(), audit));
     }
 
     static class JobSchedule {

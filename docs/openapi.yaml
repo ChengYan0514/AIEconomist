@@ -124,6 +124,19 @@ paths:
         '404': {$ref: '#/components/responses/Error', description: ROLE_NOT_FOUND}
         '409': {$ref: '#/components/responses/Error', description: USERNAME_TAKEN}
   /users/{username}:
+    get:
+      operationId: getUser
+      description: 需要 SYSTEM_MANAGE。按用户名精确查找平台用户。
+      parameters: [{$ref: '#/components/parameters/Username'}]
+      responses:
+        '200':
+          description: 平台用户
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/PlatformUser'}
+        '401': {$ref: '#/components/responses/Error'}
+        '403': {$ref: '#/components/responses/Error'}
+        '404': {$ref: '#/components/responses/Error', description: USER_NOT_FOUND}
     patch:
       operationId: updateUser
       description: 需要 SYSTEM_MANAGE。提交显示名称及单个角色，后续请求立即采用新角色。
@@ -350,7 +363,7 @@ paths:
   /audit-events:
     get:
       operationId: listAuditEvents
-      description: 仅系统管理员可用。所有条件同时匹配，时间边界包含在内，结果按时间及事件 ID 倒序。
+      description: 仅系统管理员可用。所有条件同时匹配，时间边界包含在内，结果按时间及事件 ID 倒序。以 JOB 和任务 ID 筛选可查任务提交、重试和逐项结果。
       parameters:
         - {name: from, in: query, schema: {type: string, format: date-time}}
         - {name: to, in: query, schema: {type: string, format: date-time}}
@@ -394,8 +407,20 @@ paths:
                     properties:
                       summary:
                         type: object
-                        description: 按动作提供有限摘要。CSV 成功事件仅包括导出行数、是否使用搜索、来源 ID、年份范围、处理状态及归档视图。失败事件仅保留错误代码。
-                        additionalProperties: {type: [string, integer, boolean]}
+                        description: >-
+                          按动作提供有限摘要。任务提交及重试保留类型和项目计数，重试另含原任务 ID。
+                          JOB_ITEM_CHECK 表示提交或预检时跳过或拒绝的任务项，JOB_EXECUTE 表示执行后保存的结果。
+                          任务项摘要含类型、序号、实际任务项状态以及可用的论文 ID 和固定错误代码。
+                          跳过的任务项拥有 SUCCEEDED 的审计结果和 SKIPPED 的任务项状态。
+                          通过任务执行的论文导入或发布摘要含任务 ID 及任务项序号。
+                          论文编辑摘要可包含版本和变更字段名，版本、原件修订号、状态和作品 ID 可用于追溯相关操作。
+                          CSV、用户和角色保留各自摘要。摘要不含凭据、文件路径、任务原始请求、论文正文或底层异常文本。
+                        additionalProperties:
+                          oneOf:
+                            - {type: string}
+                            - {type: integer}
+                            - {type: boolean}
+                            - {type: array, items: {type: string}}
         '400': {$ref: '#/components/responses/Error'}
         '401': {$ref: '#/components/responses/Error'}
         '403': {$ref: '#/components/responses/Error'}
@@ -863,9 +888,14 @@ components:
         eventId: {type: integer, format: int64}
         occurredAt: {type: string, format: date-time}
         actor: {type: string}
-        action: {type: string, description: 含 PAPER_CSV_EXPORT、USER_CREATE、USER_DISPLAY_NAME_CHANGE、USER_ROLE_CHANGE、USER_DISABLE、USER_ENABLE、USER_PASSWORD_RESET、ROLE_CREATE、ROLE_UPDATE 和 ROLE_DELETE}
-        objectType: {type: string, description: CSV 导出对象为 PAPER_COLLECTION，用户变更对象为 USER，角色变更对象为 ROLE}
-        objectId: {type: string, description: CSV 导出对象 ID 为 papers，用户变更对象 ID 为用户名，角色变更对象 ID 为角色 ID}
+        action:
+          type: string
+          description: >-
+            含 PAPER_CSV_EXPORT、PAPER_IMPORT、PAPER_EDIT、PAPER_REPLACE、PAPER_ARCHIVE、PAPER_RESTORE、
+            PAPER_PUBLISH、PAPER_MATCH_CONFIRM、JOB_PREFLIGHT、JOB_SUBMIT、JOB_RETRY、JOB_ITEM_CHECK、JOB_EXECUTE，
+            以及用户、角色和权限事件。
+        objectType: {type: string, description: 论文操作对象为 PAPER，任务对象为 JOB，CSV 导出对象为 PAPER_COLLECTION，用户和角色事件对象分别为 USER 和 ROLE。}
+        objectId: {type: string, description: 对象标识可为论文 ID、任务 ID、用户名或角色 ID。CSV 导出及未能取得论文 ID 的导入使用 papers。}
         outcome: {$ref: '#/components/schemas/AuditOutcome'}
     Metadata:
       type: object

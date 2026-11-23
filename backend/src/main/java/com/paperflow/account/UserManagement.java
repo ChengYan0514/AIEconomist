@@ -45,6 +45,12 @@ public final class UserManagement {
         return new UserPage(accounts.list(search, filterRole, enabled, offset, size), accounts.count(search, filterRole, enabled));
     }
 
+    public PlatformUser get(String username) {
+        var user = accounts.find(username);
+        if (user == null) throw new UserManagementException(USER_NOT_FOUND);
+        return user;
+    }
+
     public IssuedPassword create(String actor, String rawUsername, String rawName, String role) {
         String username = Accounts.normalizeUsername(rawUsername);
         AccountService.validateUsername(username);
@@ -107,9 +113,7 @@ public final class UserManagement {
 
     private PlatformUser lockedUser(String username) {
         accounts.lockManagement();
-        var user = accounts.find(username);
-        if (user == null) throw new UserManagementException(USER_NOT_FOUND);
-        return user;
+        return get(username);
     }
 
     private void requireOtherAdministrator(PlatformUser user) {

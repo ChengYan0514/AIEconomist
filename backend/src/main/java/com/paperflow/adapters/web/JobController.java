@@ -24,12 +24,14 @@ public class JobController {
     private final OriginalImports originals;
     private final JobJson json;
     private final WorkspaceAccess access;
+    private final AuditAttempt audit;
 
-    public JobController(JobService jobs, OriginalImports originals, JobJson json, WorkspaceAccess access) {
+    public JobController(JobService jobs, OriginalImports originals, JobJson json, WorkspaceAccess access, AuditAttempt audit) {
         this.jobs = jobs;
         this.originals = originals;
         this.json = json;
         this.access = access;
+        this.audit = audit;
     }
 
     record StartJob(JobKind kind, java.util.List<String> paperIds, String sourceId, Integer yearFrom, Integer yearTo) {}
@@ -44,14 +46,16 @@ public class JobController {
     @ResponseStatus(HttpStatus.CREATED)
     JobView preflight(@RequestParam MultipartFile file, Principal actor) throws IOException {
         try (var stream = file.getInputStream()) {
-            return view(originals.preflight(actor.getName(), file.getOriginalFilename(), stream));
+            return view(audit.run(actor.getName(), "JOB_PREFLIGHT", "JOB_COLLECTION", "jobs",
+                    () -> originals.preflight(actor.getName(), file.getOriginalFilename(), stream)));
         }
     }
 
     @PostMapping("/imports/{jobId}/confirm")
     @ResponseStatus(HttpStatus.ACCEPTED)
-    JobView confirm(@PathVariable UUID jobId) {
-        return view(jobs.confirm(jobId));
+    JobView confirm(@PathVariable UUID jobId, Principal actor) {
+        return view(audit.run(actor.getName(), "JOB_SUBMIT", "JOB", jobId.toString(),
+                () -> jobs.confirm(jobId, actor.getName())));
     }
 
     @GetMapping("/jobs")
@@ -65,8 +69,9 @@ public class JobController {
     @ResponseStatus(HttpStatus.ACCEPTED)
     JobView start(@RequestBody StartJob request, @RequestAttribute(CURRENT_ACCOUNT) AccountAccess actor) {
         access.requireJob(actor, request.kind(), "JOB_SUBMIT", String.valueOf(request.kind()));
-        return view(jobs.start(new JobRequest(request.kind(), request.paperIds(), request.sourceId(),
-                request.yearFrom(), request.yearTo()), actor.username()));
+        return view(audit.run(actor.username(), "JOB_SUBMIT", "JOB_COLLECTION", "jobs",
+                () -> jobs.start(new JobRequest(request.kind(), request.paperIds(), request.sourceId(),
+                        request.yearFrom(), request.yearTo()), actor.username())));
     }
 
     @GetMapping("/jobs/{jobId}")
@@ -87,7 +92,8 @@ public class JobController {
     @ResponseStatus(HttpStatus.ACCEPTED)
     JobView retry(@PathVariable UUID jobId, @RequestAttribute(CURRENT_ACCOUNT) AccountAccess actor) {
         access.requireJob(actor, jobs.get(jobId).kind(), "JOB_RETRY", jobId.toString());
-        return view(jobs.retry(jobId, actor.username()));
+        return view(audit.run(actor.username(), "JOB_RETRY", "JOB", jobId.toString(),
+                () -> jobs.retry(jobId, actor.username())));
     }
 
     private JobView view(JobSummary job) {

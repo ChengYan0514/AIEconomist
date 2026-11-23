@@ -28,7 +28,7 @@ public final class FullTextService {
     }
 
     public void parse(String id, long revision, ParseTask previous, Consumer<ParseTask> remember,
-                      Runnable checkClaim) throws IOException, InterruptedException {
+                      Runnable checkClaim, Runnable afterParse) throws IOException, InterruptedException {
         Paper paper = papers.get(id);
         requireRevision(paper, revision);
         if (!"PDF".equals(paper.originalType())) {
@@ -40,10 +40,11 @@ public final class FullTextService {
             requireRevision(papers.lockCurrent(id), revision);
             text.addArtifact(artifact);
             text.markParsed(id, artifact.parseId());
+            afterParse.run();
         });
     }
 
-    public boolean publish(String id, long revision, UUID targetParseId, Runnable checkClaim) throws IOException {
+    public boolean publish(String id, long revision, UUID targetParseId, Runnable checkClaim, Runnable afterPublish) throws IOException {
         Paper paper = papers.get(id);
         requireRevision(paper, revision);
         if (targetParseId != null && targetParseId.equals(paper.publishedParseId())) return false;
@@ -60,6 +61,7 @@ public final class FullTextService {
                 text.addBlocks(artifact.parseId(), blocks.subList(start, Math.min(start + 500, blocks.size())));
             }
             text.markPublished(id, artifact.parseId());
+            afterPublish.run();
             return true;
         }));
     }

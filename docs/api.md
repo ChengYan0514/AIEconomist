@@ -206,6 +206,10 @@ S123,2024,Example paper,Alice;Bob,files/paper.pdf
 
 论文 CSV 导出的动作是 `PAPER_CSV_EXPORT`，对象是 `PAPER_COLLECTION` 类型的 `papers`。服务器完成 CSV 写入与刷新后记录 `SUCCEEDED`，摘要包含导出行数、是否使用搜索词、归档视图以及已应用的来源 ID、年份范围和处理状态。请求字段无效或写入中断时记录 `FAILED`，摘要只包含错误代码。未登录的请求返回 `401`，已登录但未获准的导出请求返回 `403` 并记录 `DENIED`。审计摘要排除原始搜索词、正文、CSV 内容、密码、密钥和会话标识。
 
+论文导入、编辑、更换原件、归档、恢复、全文发布和手动确认匹配均可按 `PAPER` 及论文 ID 查找。摘要按操作保存版本、原件修订号、关联作品 ID 或发生变化的字段名。按 `JOB` 及任务 ID 可查 ZIP 预检、提交、重试、输入校验结果以及逐项执行结果。原件导入及全文发布事件同时保存任务 ID 和项序号。执行事件使用登记任务时的用户名，`itemState` 标明实际项状态。已跳过的项使用 `SUCCEEDED` 审计结果，并标明 `SKIPPED` 项状态。失败事件仅保存固定错误代码和可用的关联标识。
+
+事件详情可打开当前账号能读取且仍存在的对象。用户存在性通过 `GET /api/users/{username}` 按用户名检查，系统管理员可读取该接口。
+
 用户创建、显示名称修改和角色变更分别记录为 `USER_CREATE`、`USER_DISPLAY_NAME_CHANGE` 和 `USER_ROLE_CHANGE`。停用、恢复和密码重置分别记录为 `USER_DISABLE`、`USER_ENABLE` 和 `USER_PASSWORD_RESET`。对象类型为 `USER`，对象 ID 为该用户的固定用户名。启停摘要记录前后状态，重置摘要只记录需要设置个人密码。
 
 自定义角色创建、修改和删除分别记录为 `ROLE_CREATE`、`ROLE_UPDATE` 和 `ROLE_DELETE`。对象类型为 `ROLE`，对象 ID 为固定角色 ID。摘要记录角色名称、权限和受影响人数，编辑事件同时记录此前的名称、权限以及说明是否变化。

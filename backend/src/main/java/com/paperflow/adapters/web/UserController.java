@@ -38,6 +38,11 @@ public class UserController {
         return new Page<>(result.items().stream().map(UserView::from).toList(), page, size, result.total());
     }
 
+    @GetMapping("/{username}")
+    UserView get(@PathVariable String username) {
+        return UserView.from(users.get(username));
+    }
+
     @PostMapping
     ResponseEntity<IssuedPassword> create(@RequestBody CreateUser request, Principal actor) {
         var created = users.create(actor.getName(), request.username(), request.displayName(), request.role());

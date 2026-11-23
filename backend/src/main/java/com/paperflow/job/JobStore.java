@@ -15,7 +15,8 @@ public interface JobStore {
     int queueReady(UUID id);
     int retryFailed(UUID id, UUID previous);
     JobItem claim(long seconds);
-    int expireClaims();
+    List<JobItem> expireClaims();
+    String username(UUID id);
     boolean claimActive(UUID id, int sequence);
     int checkpoint(UUID id, int sequence, String result);
     int finish(UUID id, int sequence, String state, String message, String result);

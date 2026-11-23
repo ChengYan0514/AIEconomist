@@ -16,12 +16,14 @@ public final class JobService {
     private final PaperService papers;
     private final JobJson json;
     private final TransactionTemplate transactions;
+    private final JobAudit audit;
 
-    public JobService(JobStore jobs, PaperService papers, JobJson json, TransactionTemplate transactions) {
+    public JobService(JobStore jobs, PaperService papers, JobJson json, TransactionTemplate transactions, JobAudit audit) {
         this.jobs = jobs;
         this.papers = papers;
         this.json = json;
         this.transactions = transactions;
+        this.audit = audit;
     }
 
     public JobSummary start(JobRequest request, String username) {
@@ -32,7 +34,7 @@ public final class JobService {
             var scope = request.paperIds().isEmpty() ? request : Map.of("selectedCount", request.paperIds().size());
             jobs.create(id, request.kind(), username, json.write(scope), null);
             addItems(inputs);
-            return get(id);
+            return submitted(username, "JOB_SUBMIT", id, inputs);
         });
     }
 
@@ -40,18 +42,19 @@ public final class JobService {
         return transactions.execute(status -> {
             jobs.create(id, JobKind.ORIGINAL_IMPORT, username, json.write(Map.of("filename", filename)), null);
             addItems(inputs);
-            return get(id);
+            return submitted(username, "JOB_PREFLIGHT", id, inputs);
         });
     }
 
-    public JobSummary confirm(UUID id) {
+    public JobSummary confirm(UUID id, String username) {
         return transactions.execute(status -> {
             JobSummary job = get(id);
             if (job.kind() != JobKind.ORIGINAL_IMPORT) throw new JobConflict("此任务无需确认");
             if (job.confirmedAt() != null) return job;
             if (job.ready() == 0) throw new JobConflict("没有通过预检的记录");
-            if (jobs.confirm(id) == 1) jobs.queueReady(id);
-            return get(id);
+            if (jobs.confirm(id) != 1) return get(id);
+            jobs.queueReady(id);
+            return submitted(username, "JOB_SUBMIT", id, List.of());
         });
     }
 
@@ -65,8 +68,15 @@ public final class JobService {
             jobs.create(id, old.kind(), username, old.scope(), previous);
             if (old.kind() == JobKind.ORIGINAL_IMPORT) jobs.confirm(id);
             if (jobs.retryFailed(id, previous) == 0) throw new JobConflict("预检失败项需要修正后重新上传");
-            return get(id);
+            return submitted(username, "JOB_RETRY", id, List.of());
         });
+    }
+
+    private JobSummary submitted(String actor, String action, UUID id, List<JobItem> inputs) {
+        JobSummary job = get(id);
+        audit.submitted(actor, action, job);
+        inputs.forEach(item -> audit.checked(actor, item));
+        return job;
     }
 
     public JobSummary get(UUID id) {
