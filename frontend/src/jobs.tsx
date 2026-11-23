@@ -131,7 +131,7 @@ export function JobDetail({ id }: { id: string }) {
           </tr></thead>
           <tbody>{itemPage.items.map((item) => {
             const candidates = job.kind === "MATCH" ? item.result?.candidates : undefined
-            const importedPaper = item.state === "SUCCEEDED" ? item.result?.paperId ?? item.paperId : null
+            const importedPaper = item.result?.paperId ?? (item.state === "SUCCEEDED" ? item.paperId : null)
             const linkedPaper = can("PAPER_READ") && (zipImport ? item.preflight?.existingPaperId ?? importedPaper : item.paperId)
             return <tr key={item.sequence}>
               {zipImport && <td>{item.sequence}</td>}

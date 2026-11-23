@@ -1,18 +1,6 @@
 const assert = require("node:assert/strict")
 const { test } = require("node:test")
-const { login, withBrowser } = require("./browser.cjs")
-
-async function upload(page, title, year) {
-  const csrf = await page.request.get("/api/csrf")
-  assert.ok(csrf.ok())
-  const { headerName, token } = await csrf.json()
-  const response = await page.request.post("/api/papers", { headers: { [headerName]: token }, multipart: {
-    sourceId: "S123", year, title, authors: "Alice",
-    file: { name: "paper.pdf", mimeType: "application/pdf", buffer: Buffer.from("%PDF-1.4\n1 0 obj\n<<>>\nendobj\n%%EOF\n") },
-  } })
-  assert.equal(response.status(), 201, await response.text())
-  return (await response.json()).paperId
-}
+const { login, upload, withBrowser } = require("./browser.cjs")
 
 test("按勾选的论文提交解析，从处理记录打开任务并回到论文", () => withBrowser(async (browser, url) => {
   const page = await browser.newPage({ baseURL: url })

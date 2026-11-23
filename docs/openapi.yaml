@@ -411,7 +411,7 @@ paths:
                           按动作提供有限摘要。任务提交及重试保留类型和项目计数，重试另含原任务 ID。
                           JOB_ITEM_CHECK 表示提交或预检时跳过或拒绝的任务项，JOB_EXECUTE 表示执行后保存的结果。
                           任务项摘要含类型、序号、实际任务项状态以及可用的论文 ID 和固定错误代码。
-                          跳过的任务项拥有 SUCCEEDED 的审计结果和 SKIPPED 的任务项状态。
+                          跳过的任务项拥有 SUCCEEDED 的任务审计结果和 SKIPPED 的任务项状态。跳过时无论文导入或发布成功事件。
                           通过任务执行的论文导入或发布摘要含任务 ID 及任务项序号。
                           论文编辑摘要可包含版本和变更字段名，版本、原件修订号、状态和作品 ID 可用于追溯相关操作。
                           CSV、用户和角色保留各自摘要。摘要不含凭据、文件路径、任务原始请求、论文正文或底层异常文本。
@@ -519,7 +519,7 @@ paths:
     parameters: [{$ref: '#/components/parameters/PaperId'}]
     get:
       operationId: listPaperJobRecords
-      description: 需要 PAPER_READ 和 JOB_READ。按论文 ID 返回已有新版任务项，包含已归档或历史论文的记录。ZIP 行须已成功登记原件，或预检时已找到该论文。仅有旧版处理状态的论文返回空分页。
+      description: 需要 PAPER_READ 和 JOB_READ。按论文 ID 返回已有新版任务项，包含已归档或历史论文的记录。ZIP 行须已成功登记原件，或在预检或执行时找到该论文。仅有旧版处理状态的论文返回空分页。
       parameters: [{$ref: '#/components/parameters/Page'}, {$ref: '#/components/parameters/Size'}]
       responses:
         '200':
@@ -1019,7 +1019,7 @@ components:
       properties:
         sequence: {type: integer, description: ZIP 导入时为从 1 开始的 CSV 数据记录位序，不含表头。}
         target: {type: string}
-        paperId: {type: [string, 'null']}
+        paperId: {type: [string, 'null'], description: 论文 ID。待导入的 ZIP 行可显示预计算 ID。若执行时发现已登记论文，则返回该论文的实际 ID。}
         state: {$ref: '#/components/schemas/JobItemState'}
         inputError: {type: boolean, description: 此项在 ZIP 预检阶段失败，需要修正后重新上传。}
         message: {type: [string, 'null']}
@@ -1049,6 +1049,7 @@ components:
       properties:
         workId: {type: string}
         year: {type: [integer, 'null']}
+            paperId: {type: string, description: ZIP 导入登记或找到的实际论文 ID。}
         title: {type: [string, 'null']}
         doi: {type: [string, 'null']}
         authors: {type: string}

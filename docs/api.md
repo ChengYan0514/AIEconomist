@@ -149,7 +149,7 @@ S123,2024,Example paper,Alice;Bob,files/paper.pdf
 
 任务项返回 `sequence`、`target`、`paperId`、`state`、`message`、`result` 和 `inputError`。`inputError` 为真时，需修正 ZIP 输入并重新上传。项状态为 `READY`、`QUEUED`、`RUNNING`、`SUCCEEDED`、`SKIPPED`、`FAILED`。`state` 按任务项状态精确筛选，空值返回所有状态，其他非空值返回空列表。任务项的分页总数按筛选结果计算，任务摘要继续统计整个任务。`paperId`、`message`、`result` 可为 `null`。`result` 随类型变化，例如导入原件的 `{paperId}`、OpenAlex 元数据导入的 `{imported}`、匹配的 `{message, candidates, matched, candidateSource}`，以及解析执行时登记的 `{taskId, fileId, uploaded}`。当 `succeeded`、`skipped` 或 `failed` 非零时，可在任务项中进一步判断每个目标的结果。
 
-论文处理记录需要 `PAPER_READ` 和 `JOB_READ`，支持历史和已归档的论文 ID。记录包含 `jobId`、`sequence`、`kind`、任务项的 `state` 和 `message`，以及任务提交时间 `createdAt`。先按论文 ID 筛选，再按提交时间和任务 ID 降序以及 `sequence` 升序分页。ZIP 行在导入成功或预检找到已登记论文时纳入记录。未知论文返回 `404 PAPER_NOT_FOUND`，仅有历史处理状态的论文返回空分页。
+论文处理记录需要 `PAPER_READ` 和 `JOB_READ`，支持历史和已归档的论文 ID。记录包含 `jobId`、`sequence`、`kind`、任务项的 `state` 和 `message`，以及任务提交时间 `createdAt`。先按论文 ID 筛选，再按提交时间和任务 ID 降序以及 `sequence` 升序分页。ZIP 行在导入成功或预检、执行时找到已登记论文时，按实际论文 ID 纳入记录。未知论文返回 `404 PAPER_NOT_FOUND`，仅有历史处理状态的论文返回空分页。
 
 ## OpenAlex 出版来源和匹配
 
@@ -211,7 +211,7 @@ S123,2024,Example paper,Alice;Bob,files/paper.pdf
 
 论文 CSV 导出的动作是 `PAPER_CSV_EXPORT`，对象是 `PAPER_COLLECTION` 类型的 `papers`。服务器完成 CSV 写入与刷新后记录 `SUCCEEDED`，摘要包含导出行数、是否使用搜索词、归档视图以及已应用的来源 ID、年份范围和处理状态。请求字段无效或写入中断时记录 `FAILED`，摘要只包含错误代码。未登录的请求返回 `401`，已登录但未获准的导出请求返回 `403` 并记录 `DENIED`。审计摘要排除原始搜索词、正文、CSV 内容、密码、密钥和会话标识。
 
-论文导入、编辑、更换原件、归档、恢复、全文发布和手动确认匹配均可按 `PAPER` 及论文 ID 查找。摘要按操作保存版本、原件修订号、关联作品 ID 或发生变化的字段名。按 `JOB` 及任务 ID 可查 ZIP 预检、提交、重试、输入校验结果以及逐项执行结果。原件导入及全文发布事件同时保存任务 ID 和项序号。执行事件使用登记任务时的用户名，`itemState` 标明实际项状态。已跳过的项使用 `SUCCEEDED` 审计结果，并标明 `SKIPPED` 项状态。失败事件仅保存固定错误代码和可用的关联标识。
+论文导入、编辑、更换原件、归档、恢复、全文发布和手动确认匹配均可按 `PAPER` 及论文 ID 查找。摘要按操作保存版本、原件修订号、关联作品 ID 或发生变化的字段名。按 `JOB` 及任务 ID 可查 ZIP 预检、提交、重试、输入校验结果以及逐项执行结果。原件导入及全文发布事件同时保存任务 ID 和项序号。执行事件使用登记任务时的用户名，`itemState` 标明实际项状态。已跳过的项使用 `SUCCEEDED` 任务审计结果，并标明 `SKIPPED` 项状态。跳过时无论文导入或发布成功事件。失败事件仅保存固定错误代码和可用的关联标识。
 
 事件详情可打开当前账号能读取且仍存在的对象。用户存在性通过 `GET /api/users/{username}` 按用户名检查，系统管理员可读取该接口。
 

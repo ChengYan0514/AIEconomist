@@ -82,11 +82,12 @@ public final class PaperService {
     public Paper create(PaperMetadata metadata, InputStream document, String type, Consumer<Paper> afterCreate) throws IOException {
         validateSource(metadata.sourceId());
         String id = metadata.paperId();
-        if (duplicate(metadata) != null) throw duplicatePaper();
+        String existing = duplicate(metadata);
+        if (existing != null) throw new DuplicatePaper(existing);
         StoredOriginal stored = files.save(document, id, type);
         try {
             return transactions.execute(status -> {
-                if (papers.add(id, metadata, stored) != 1) throw duplicatePaper();
+                if (papers.add(id, metadata, stored) != 1) throw new DuplicatePaper(id);
                 Paper created = get(id);
                 afterCreate.accept(created);
                 return created;
@@ -169,9 +170,5 @@ public final class PaperService {
         if (!Objects.equals(before.url(), after.url())) changed.add("url");
         if (!Objects.equals(before.provider(), after.provider())) changed.add("provider");
         return changed;
-    }
-
-    private PaperConflict duplicatePaper() {
-        return new PaperConflict("DUPLICATE_PAPER", "该论文已经登记，请在详情页替换原件");
     }
 }

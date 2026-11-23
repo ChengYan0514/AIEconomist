@@ -5,6 +5,7 @@ import com.paperflow.fulltext.ParseTask;
 import com.paperflow.openalex.OpenAlexService;
 import com.paperflow.original.ImportRow;
 import com.paperflow.original.OriginalImports;
+import com.paperflow.paper.model.DuplicatePaper;
 import com.paperflow.paper.model.PaperConflict;
 import com.paperflow.paper.model.PaperNotFound;
 import org.slf4j.Logger;
@@ -99,11 +100,14 @@ public final class JobWorker {
     }
 
     private void importOriginal(JobItem item, String actor) throws IOException {
-        String paperId = originals.apply(json.read(item.input(), ImportRow.class), paper ->
-                completed(item, actor, new Outcome("SUCCEEDED", "原件已登记",
-                        json.write(Map.of("paperId", paper.paperId())), null, paper.revision())));
-        if (paperId == null) {
-            completed(item, actor, new Outcome("SKIPPED", "论文已存在", null, "DUPLICATE_PAPER", null));
+        try {
+            originals.apply(json.read(item.input(), ImportRow.class), paper ->
+                    completed(item, actor, new Outcome("SUCCEEDED", "原件已登记",
+                            json.write(Map.of("paperId", paper.paperId())), null, paper.revision())));
+        } catch (DuplicatePaper duplicate) {
+            String paperId = duplicate.paperId();
+            completed(item.withPaperId(paperId), actor, new Outcome("SKIPPED", "论文已存在",
+                    json.write(Map.of("paperId", paperId)), duplicate.code(), null));
         }
     }
 
@@ -141,7 +145,9 @@ public final class JobWorker {
 
     private boolean finish(JobItem item, String actor, Outcome outcome) {
         return Boolean.TRUE.equals(transactions.execute(status -> {
-            if (jobs.finish(item.jobId(), item.sequence(), outcome.state(), outcome.message(), outcome.data()) != 1) return false;
+            if (jobs.finish(item.jobId(), item.sequence(), item.paperId(), outcome.state(), outcome.message(), outcome.data()) != 1) {
+                return false;
+            }
             audit.executed(actor, item, outcome.state(), outcome.code(), outcome.revision());
             return true;
         }));

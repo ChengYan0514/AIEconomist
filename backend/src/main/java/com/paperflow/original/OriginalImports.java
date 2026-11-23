@@ -2,7 +2,6 @@ package com.paperflow.original;
 
 import com.paperflow.job.*;
 import com.paperflow.paper.manage.PaperService;
-import com.paperflow.paper.model.PaperConflict;
 import com.paperflow.paper.model.Paper;
 
 import java.io.IOException;
@@ -42,13 +41,8 @@ public final class OriginalImports {
         }
     }
 
-    public String apply(ImportRow row, Consumer<Paper> afterCreate) throws IOException {
-        try {
-            return archive.read(row, input -> papers.create(row.metadata(), input, row.type(), afterCreate).paperId());
-        } catch (PaperConflict error) {
-            if (!"DUPLICATE_PAPER".equals(error.code())) throw error;
-            return null;
-        }
+    public void apply(ImportRow row, Consumer<Paper> afterCreate) throws IOException {
+        archive.read(row, input -> papers.create(row.metadata(), input, row.type(), afterCreate));
     }
 
     private JobItem item(UUID id, OriginalArchive.Row row, HashSet<String> seen) {

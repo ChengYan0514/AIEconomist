@@ -1,6 +1,6 @@
 package com.paperflow.paper.model;
 
-public final class PaperConflict extends RuntimeException {
+public class PaperConflict extends RuntimeException {
     private final String code;
 
     public PaperConflict(String code, String message) {

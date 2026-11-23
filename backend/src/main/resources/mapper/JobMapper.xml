@@ -126,7 +126,7 @@
               AND state = 'RUNNING' AND claim_until &gt; clock_timestamp()
     </update>
     <update id="finish">
-        UPDATE v2_job_item SET state = #{state}, claim_until = NULL, finished_at = now(),
+        UPDATE v2_job_item SET state = #{state}, paper_id = #{paperId}, claim_until = NULL, finished_at = now(),
             message = #{message}, result = COALESCE(CAST(#{result} AS jsonb), CASE WHEN kind = 'PARSE' THEN result END)
         WHERE job_id = CAST(#{id} AS uuid) AND sequence = #{sequence} AND state = 'RUNNING' AND claim_until &gt; clock_timestamp()
     </update>

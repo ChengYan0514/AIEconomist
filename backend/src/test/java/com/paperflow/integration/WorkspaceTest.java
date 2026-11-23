@@ -50,6 +50,7 @@ class WorkspaceTest {
         String paper = upload("A Test Paper", "10.1/TEST");
         uploadBatch();
         parseAndPublish(paper);
+        repeatPublishWithoutAnotherMutationAudit(paper);
         importAndMatch(paper);
         updateOriginal(paper);
         archiveAndRestore(paper);
@@ -140,6 +141,17 @@ class WorkspaceTest {
         var choice = Map.of("workId", "W124", "version", getPaper(ambiguous).path("version").asLong());
         assertThat(write(post("/api/papers/" + ambiguous + "/match"), choice, 200).path("matchedWorkId").asText()).isEqualTo("W124");
         assertThat(auditSummary("PAPER_MATCH_CONFIRM", ambiguous, "SUCCEEDED").path("workId").asText()).isEqualTo("W124");
+    }
+
+    private void repeatPublishWithoutAnotherMutationAudit(String paper) throws Exception {
+        String repeat = start("PUBLISH", paper);
+        await(repeat, "SUCCEEDED");
+        var executed = auditSummary("JOB_EXECUTE", repeat, "SUCCEEDED");
+        assertThat(executed.path("itemState").asText()).isEqualTo("SKIPPED");
+        assertThat(executed.path("code").asText()).isEqualTo("ALREADY_PUBLISHED");
+        mvc.perform(get("/api/audit-events").session(session).param("action", "PAPER_PUBLISH")
+                        .param("objectId", paper).param("outcome", "SUCCEEDED"))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.total").value(1));
     }
 
     private void updateOriginal(String paper) throws Exception {

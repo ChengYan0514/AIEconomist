@@ -113,15 +113,15 @@ class OriginalPreflightHttpTest {
         var batch = preflight("S123,2025,Registered after preflight,Alice,files/paper.pdf\n");
         String id = batch.required("jobId").asText();
         var file = new MockMultipartFile("file", "paper.pdf", "application/pdf", PDF.getBytes(StandardCharsets.US_ASCII));
-        mvc.perform(http.write(multipart("/api/papers").file(file).param("title", "Registered after preflight")
+        var registration = mvc.perform(http.write(multipart("/api/papers").file(file).param("title", "Registered after preflight")
                         .param("sourceId", "S123").param("year", "2025").param("authors", "Alice"), admin, null))
-                .andExpect(status().isCreated());
+                .andExpect(status().isCreated()).andReturn();
         confirm(id);
         assertThat(await(id, "SUCCEEDED").required("skipped").asInt()).isEqualTo(1);
         var skipped = items(id, "SKIPPED").get(0);
         assertReview(skipped, 1, "SKIPPED", "IMPORTABLE", "files/paper.pdf", null, null);
         assertThat(skipped.required("message").asText()).isEqualTo("论文已存在");
-        assertThat(skipped.required("result").isNull()).isTrue();
+        assertThat(skipped.required("result").required("paperId")).isEqualTo(http.body(registration).required("paperId"));
     }
 
     private JsonNode preflight(String rows) throws Exception {

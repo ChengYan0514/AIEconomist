@@ -19,4 +19,16 @@ async function login(page) {
   await page.getByRole("button", { name: "登录管理端" }).click()
 }
 
-module.exports = { login, withBrowser }
+async function upload(page, title, year) {
+  const csrf = await page.request.get("/api/csrf")
+  assert.ok(csrf.ok())
+  const { headerName, token } = await csrf.json()
+  const response = await page.request.post("/api/papers", { headers: { [headerName]: token }, multipart: {
+    sourceId: "S123", year, title, authors: "Alice",
+    file: { name: "paper.pdf", mimeType: "application/pdf", buffer: Buffer.from("%PDF-1.4\n1 0 obj\n<<>>\nendobj\n%%EOF\n") },
+  } })
+  assert.equal(response.status(), 201, await response.text())
+  return (await response.json()).paperId
+}
+
+module.exports = { login, upload, withBrowser }

@@ -21,5 +21,5 @@ public interface JobStore {
     String username(UUID id);
     boolean claimActive(UUID id, int sequence);
     int checkpoint(UUID id, int sequence, String result);
-    int finish(UUID id, int sequence, String state, String message, String result);
+    int finish(UUID id, int sequence, String paperId, String state, String message, String result);
 }

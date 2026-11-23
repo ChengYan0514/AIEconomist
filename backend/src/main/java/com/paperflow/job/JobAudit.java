@@ -35,7 +35,7 @@ public final class JobAudit {
 
     void executed(String actor, JobItem item, String state, String code, Long revision) {
         item(actor, "JOB_EXECUTE", item, state, code, revision);
-        if (item.paperId() == null) return;
+        if (item.paperId() == null || "SKIPPED".equals(state)) return;
         switch (item.kind()) {
             case ORIGINAL_IMPORT -> paper(actor, "PAPER_IMPORT", item, state, code, revision);
             case PUBLISH -> paper(actor, "PAPER_PUBLISH", item, state, code, revision);

@@ -10,6 +10,7 @@ import org.junit.jupiter.api.condition.EnabledIfEnvironmentVariable;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.mock.web.MockHttpSession;
 import org.springframework.mock.web.MockMultipartFile;
 import org.springframework.test.context.DynamicPropertyRegistry;
@@ -28,9 +29,11 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 @EnabledIfEnvironmentVariable(named = "PAPERFLOW_TEST_JDBC_URL", matches = "jdbc:postgresql:.*")
 class PaperJobHistoryHttpTest {
     private static final String HISTORY = "/api/papers/{paperId}/jobs";
+    private static final String LEGACY_DUPLICATE = "legacy-history-duplicate";
     private static WorkspaceFixture fixture;
     @Autowired MockMvc mvc;
     @Autowired ObjectMapper json;
+    @Autowired JdbcTemplate jdbc;
     private WorkspaceHttp http;
     private MockHttpSession admin;
 
@@ -65,21 +68,61 @@ class PaperJobHistoryHttpTest {
 
     @Test
     void includesRegisteredImportResultsAndExcludesPreflightOnlyIds() throws Exception {
+        jdbc.update("""
+                INSERT INTO original_file (file_id, source_id, year, paper_title, authors)
+                VALUES (?, 'S123', 2024, 'Other title before preview', 'Alice;Bob')
+                """, LEGACY_DUPLICATE);
         String knownId = upload("Known duplicate at preflight");
         String jobId = preflight();
         var jobItems = mvc.perform(get("/api/jobs/{id}/items", jobId).session(admin)).andExpect(status().isOk()).andReturn();
         var rows = http.body(jobItems).path("items");
         String registeredElsewhere = rows.get(0).path("paperId").asText();
         String imported = rows.get(1).path("paperId").asText();
+        String provisionalLegacyId = rows.get(3).path("paperId").asText();
         mvc.perform(get(HISTORY, registeredElsewhere).session(admin)).andExpect(status().isNotFound());
         assertThat(upload("Registered after preview")).isEqualTo(registeredElsewhere);
+        makeLegacyDuplicateAfterPreflight();
+        assertThat(provisionalLegacyId).isNotEqualTo(LEGACY_DUPLICATE);
         assertEmpty(registeredElsewhere);
+        assertEmpty(LEGACY_DUPLICATE);
         assertImport(knownId, jobId, "SKIPPED", "论文已存在");
 
         mvc.perform(http.write(post("/api/imports/{id}/confirm", jobId), admin, null)).andExpect(status().isAccepted());
         awaitImport(jobId);
         assertImport(imported, jobId, "SUCCEEDED", "原件已登记");
-        assertEmpty(registeredElsewhere);
+        assertImport(registeredElsewhere, jobId, "SKIPPED", "论文已存在");
+        assertImport(LEGACY_DUPLICATE, jobId, "SKIPPED", "论文已存在");
+        mvc.perform(get("/api/jobs/{id}/items", jobId).session(admin))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.items[3].paperId").value(LEGACY_DUPLICATE))
+                .andExpect(jsonPath("$.items[3].result.paperId").value(LEGACY_DUPLICATE))
+                .andExpect(jsonPath("$.items[3].preflight.status").value("IMPORTABLE"));
+        assertLateDuplicateAudit(jobId, registeredElsewhere);
+    }
+
+    private void assertLateDuplicateAudit(String jobId, String registeredElsewhere) throws Exception {
+        var executions = mvc.perform(get("/api/audit-events").session(admin)
+                        .param("action", "JOB_EXECUTE").param("objectId", jobId).param("size", "1"))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.total").value(3)).andReturn();
+        long latest = http.body(executions).path("items").get(0).path("eventId").asLong();
+        mvc.perform(get("/api/audit-events/{id}", latest).session(admin))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.summary.paperId").value(LEGACY_DUPLICATE))
+                .andExpect(jsonPath("$.summary.itemState").value("SKIPPED"))
+                .andExpect(jsonPath("$.summary.code").value("DUPLICATE_PAPER"));
+        mvc.perform(get("/api/audit-events").session(admin)
+                        .param("action", "PAPER_IMPORT").param("objectId", registeredElsewhere).param("outcome", "SUCCEEDED"))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.total").value(1));
+        mvc.perform(get("/api/audit-events").session(admin)
+                        .param("action", "PAPER_IMPORT").param("objectId", LEGACY_DUPLICATE).param("outcome", "SUCCEEDED"))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.total").value(0));
+    }
+
+    private void makeLegacyDuplicateAfterPreflight() throws Exception {
+        var edit = json.createObjectNode().put("sourceId", "S123").put("year", 2024)
+                .put("title", "Made duplicate by a legacy edit").put("authors", "Alice;Bob").put("version", 0);
+        mvc.perform(http.write(patch("/api/papers/{id}", LEGACY_DUPLICATE), admin, edit)).andExpect(status().isOk())
+                .andExpect(jsonPath("$.paperId").value(LEGACY_DUPLICATE));
     }
 
     @Test
@@ -142,6 +185,7 @@ class PaperJobHistoryHttpTest {
                 S123,2025,Registered after preview,Alice,paper.pdf
                 S123,2025,Registered by this batch,Alice,paper.pdf
                 S123,2025,Known duplicate at preflight,Alice,paper.pdf
+                S123,2024,Made duplicate by a legacy edit,Alice;Bob,paper.pdf
                 """, "paper.pdf", PDF);
         var request = multipart("/api/imports").file(new MockMultipartFile("file", "history.zip", "application/zip", zip));
         return http.body(mvc.perform(http.write(request, admin, null)).andExpect(status().isCreated()).andReturn())
