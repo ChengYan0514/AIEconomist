@@ -63,6 +63,23 @@ public final class FileStorage implements OriginalStorage {
         return read(paper.usesLegacyFile(), paper.originalPath());
     }
 
+    public void checkReadWrite() throws IOException {
+        Files.createDirectories(storage);
+        Path marker = Files.createTempFile(storage, ".status-", null);
+        try {
+            Files.writeString(marker, "paperflow");
+            if (!"paperflow".equals(Files.readString(marker))) throw new IOException("Storage read-back failed");
+        } finally {
+            Files.deleteIfExists(marker);
+        }
+    }
+
+    public void checkLegacyRead() throws IOException {
+        try (var entries = Files.newDirectoryStream(legacy)) {
+            entries.iterator().hasNext();
+        }
+    }
+
     public boolean originalAvailable(Paper paper) {
         try {
             original(paper);

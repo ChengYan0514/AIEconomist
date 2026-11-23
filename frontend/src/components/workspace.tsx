@@ -1,4 +1,4 @@
-import { BookOpen, ChevronDown, ClipboardList, Database, FileText, LogOut, Menu, Shield, ShieldCheck, Upload, UserRound, UsersRound, X } from "lucide-react"
+import { Activity, BookOpen, ChevronDown, ClipboardList, Database, FileText, LayoutDashboard, LogOut, Menu, Shield, ShieldCheck, Upload, UserRound, UsersRound, X } from "lucide-react"
 import { useState, type ReactNode } from "react"
 import { usePermissions, type Permission } from "../permissions"
 import { PasswordForm } from "./password"
@@ -11,9 +11,10 @@ export function Brand() {
   </div>
 }
 
-const navigation: { label: string; items: { path: string; label: string; icon: typeof FileText; permission: Permission }[] }[] = [{
+const navigation: { label: string; items: { path: string; label: string; icon: typeof FileText; permission?: Permission }[] }[] = [{
   label: "数据工作区",
   items: [
+    { path: "/overview", label: "总览", icon: LayoutDashboard },
     { path: "/papers", label: "论文库", icon: FileText, permission: "PAPER_READ" },
     { path: "/jobs", label: "导入与处理", icon: Upload, permission: "JOB_READ" },
     { path: "/openalex", label: "OpenAlex", icon: Database, permission: "OPENALEX_MANAGE" },
@@ -21,6 +22,7 @@ const navigation: { label: string; items: { path: string; label: string; icon: t
 }, {
   label: "系统管理",
   items: [
+    { path: "/system-status", label: "系统状态", icon: Activity, permission: "SYSTEM_MANAGE" },
     { path: "/users", label: "用户管理", icon: UsersRound, permission: "SYSTEM_MANAGE" },
     { path: "/roles", label: "角色管理", icon: Shield, permission: "SYSTEM_MANAGE" },
     { path: "/audit", label: "审计日志", icon: ClipboardList, permission: "SYSTEM_MANAGE" },
@@ -34,14 +36,14 @@ export function Workspace({ page, displayName, children, logout }:
   const [expanded, setExpanded] = useState(false)
   const matchesPage = ({ path }: { path: string }) => page === path || page.startsWith(path + "/")
   const visibleNavigation = navigation.map(({ label, items }) => ({
-    label, items: items.filter(({ path, permission }) => path === "/openalex" ? canJob("METADATA") : can(permission)),
+    label, items: items.filter(({ path, permission }) => path === "/openalex" ? canJob("METADATA") : !permission || can(permission)),
   })).filter(({ items }) => items.length > 0)
   const group = visibleNavigation.find(({ items }) => items.some(matchesPage))
   const active = group?.items.find(matchesPage)
   return <div className="workspace">
     <aside className="sidebar">
       <div className="sidebar-heading">
-        <a className="brand-link" href="/papers" aria-label="AI Economist 首页"><Brand /></a>
+        <a className="brand-link" href="/overview" aria-label="AI Economist 首页"><Brand /></a>
         <Button className="sidebar-toggle" variant="ghost" size="icon" type="button" aria-label="导航菜单"
           aria-expanded={expanded} aria-controls="sidebar-content" onClick={() => setExpanded(!expanded)}>
           {expanded ? <X size={21} /> : <Menu size={21} />}

@@ -1,21 +1,27 @@
-import { Archive, BookOpenCheck, Download, Plus, Search, Upload, Workflow } from "lucide-react"
+import { Archive, BookOpenCheck, Plus, Search, Upload, Workflow } from "lucide-react"
 import { useState, type FormEvent } from "react"
 import { paperPath, params, useQuery } from "../api"
-import { Chip, Empty, Loading, Notice, Pagination, SourceField } from "../components/shared"
+import { Chip, Empty, Loading, Notice, Pagination, SourceField, paperLabels } from "../components/shared"
 import { Button } from "../components/ui/button"
 import { SectionHeader } from "../components/workspace"
 import { usePermissions } from "../permissions"
-import type { Page, Paper, PaperStatus } from "../types"
+import type { Page, Paper } from "../types"
+import { PaperCsvExport } from "./export"
 import { ArchiveUpload, MetadataForm, ProcessPapers } from "./forms"
 
 const size = 20
 const initial = { q: "", sourceId: "", yearFrom: "", yearTo: "", status: "" }
 
+function filterFromUrl() {
+  const status = new URLSearchParams(window.location.search).get("status") ?? ""
+  return { ...initial, status: Object.hasOwn(paperLabels, status) ? status : "" }
+}
+
 export function Library() {
   const { can, canJob, canProcess } = usePermissions()
   const canWrite = can("PAPER_WRITE")
-  const [draft, setDraft] = useState(initial)
-  const [filter, setFilter] = useState(initial)
+  const [filter, setFilter] = useState(filterFromUrl)
+  const [draft, setDraft] = useState(filter)
   const [archived, setArchived] = useState(false)
   const canSelect = !archived && canProcess
   const [page, setPage] = useState(0)
@@ -27,9 +33,17 @@ export function Library() {
 
   function apply(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
+    applyFilter(draft)
+  }
+
+  function applyFilter(next: typeof initial) {
+    const url = new URL(window.location.href)
+    if (next.status) url.searchParams.set("status", next.status)
+    else url.searchParams.delete("status")
+    if (url.href !== window.location.href) window.history.replaceState(window.history.state, "", url)
     setPage(0)
     setSelected(new Set())
-    setFilter(draft)
+    setFilter(next)
   }
   function switchArchive(value: boolean) {
     setArchived(value)
@@ -58,7 +72,7 @@ export function Library() {
 
   return <>
     <SectionHeader title="论文库" actions={<>
-      {can("PAPER_CSV_EXPORT") && <Button asChild variant="outline"><a href={"/api/papers/export" + query}><Download size={17} />导出 CSV</a></Button>}
+      {can("PAPER_CSV_EXPORT") && <PaperCsvExport query={query} />}
       {canWrite && <Button type="button" variant="outline" onClick={() => setDialog("upload")}><Plus size={17} />上传单篇</Button>}
       {canJob("ORIGINAL_IMPORT") && <Button type="button" onClick={() => setDialog("archive")}><Upload size={17} />批量导入</Button>}
     </>} />
@@ -67,11 +81,11 @@ export function Library() {
       <label><span className="sr-only">出版来源</span><SourceField value={draft.sourceId} change={(value) => update("sourceId", value)} placeholder="出版来源" /></label>
       <div className="year-filter"><input className="field" type="number" min={1000} max={9999} aria-label="起始年份" placeholder="起始年" value={draft.yearFrom} onChange={(e) => update("yearFrom", e.target.value)} />
         <span>–</span><input className="field" type="number" min={1000} max={9999} aria-label="结束年份" placeholder="结束年" value={draft.yearTo} onChange={(e) => update("yearTo", e.target.value)} /></div>
-      <select className="field" aria-label="处理状态" value={draft.status} onChange={(e) => update("status", e.target.value as PaperStatus)}>
+      <select className="field" aria-label="处理状态" value={draft.status} onChange={(e) => update("status", e.target.value)}>
         <option value="">全文状态</option><option value="PUBLISHED">已发布全文</option><option value="READY">待导入全文</option><option value="UNPROCESSED">待解析</option><option value="FAILED">处理失败</option><option value="UNSUPPORTED">格式暂不支持</option>
       </select>
       <Button type="submit" variant="outline">查询</Button>
-      {Object.values(filter).some(Boolean) && <Button type="button" variant="ghost" onClick={() => { setDraft(initial); setFilter(initial); setSelected(new Set()); setPage(0) }}>重置</Button>}
+      {Object.values(filter).some(Boolean) && <Button type="button" variant="ghost" onClick={() => { setDraft(initial); applyFilter(initial) }}>重置</Button>}
     </form>
     <div className="library-toolbar">
       <div className="panel-tabs" role="group" aria-label="论文库视图">

@@ -7,10 +7,12 @@ import { Workspace } from "./components/workspace"
 import { FirstPassword, Login } from "./login"
 import { Jobs, JobDetail } from "./jobs"
 import { OpenAlex } from "./openalex"
+import { Overview } from "./overview"
 import { Library } from "./papers/library"
 import { PaperDetail } from "./papers/detail"
 import { Permissions, type Session } from "./permissions"
 import { Roles } from "./roles"
+import { SystemStatus } from "./system-status"
 import { ResetPasswordNotice, Users, type IssuedPassword } from "./users"
 import "./styles.css"
 
@@ -33,7 +35,7 @@ function App() {
     const showError = session.error && !signedOut
     return <><Login serviceError={showError ? session.error?.message : undefined} />{resetNotice}</>
   }
-  const path = window.location.pathname.replace(/\/$/, "") || "/papers"
+  const path = window.location.pathname.replace(/\/$/, "") || "/overview"
   const [section, id, action] = path.slice(1).split("/")
   async function logout() {
     try { await api("/session", { method: "DELETE" }); window.location.assign("/") }
@@ -45,18 +47,20 @@ function App() {
   const required = section === "papers" ? "PAPER_READ" :
     section === "jobs" ? "JOB_READ" :
     section === "openalex" ? "OPENALEX_MANAGE" :
-    section === "users" || section === "roles" || section === "audit" ? "SYSTEM_MANAGE" : undefined
+    ["system-status", "users", "roles", "audit"].includes(section) ? "SYSTEM_MANAGE" : undefined
   const blocked = (required && !permissions.includes(required)) ||
     (section === "openalex" && !permissions.includes("JOB_READ"))
   const page = blocked ? <section className="empty-state">
-    <h1>无权访问此页面</h1><a href="/papers" className="inline-link">返回论文库</a>
+    <h1>无权访问此页面</h1><a href="/overview" className="inline-link">返回总览</a>
   </section> :
+    section === "overview" && !id ? <Overview /> :
     section === "papers" ? id ? <PaperDetail id={decodeURIComponent(id)} /> : <Library /> :
     section === "jobs" ? id ? <JobDetail id={decodeURIComponent(id)} /> : <Jobs /> :
     section === "openalex" ? <OpenAlex /> :
+    section === "system-status" && !id ? <SystemStatus /> :
     section === "users" && !id ? <Users onChange={refresh} onPasswordReset={(issued) => { setReset(issued); refresh() }} /> :
     section === "roles" ? <Roles id={id && id !== "new" ? decodeURIComponent(id) : undefined} editing={id === "new" || action === "edit"} /> :
-    section === "audit" && !id ? <AuditLog /> : <Empty title="找不到此页面"><a href="/papers" className="inline-link">返回论文库</a></Empty>
+    section === "audit" && !id ? <AuditLog /> : <Empty title="找不到此页面"><a href="/overview" className="inline-link">返回总览</a></Empty>
   return <><Permissions.Provider value={permissions}>
     <Workspace page={path} displayName={session.data.displayName} logout={logout}>{page}</Workspace>
   </Permissions.Provider>{resetNotice}</>

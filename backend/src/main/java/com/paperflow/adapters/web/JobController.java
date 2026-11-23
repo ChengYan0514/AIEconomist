@@ -1,6 +1,7 @@
 package com.paperflow.adapters.web;
 
 import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.paperflow.account.model.AccountAccess;
 import com.paperflow.job.*;
 import com.paperflow.original.OriginalImports;
@@ -34,8 +35,10 @@ public class JobController {
     record StartJob(JobKind kind, java.util.List<String> paperIds, String sourceId, Integer yearFrom, Integer yearTo) {}
     record JobView(UUID jobId, JobKind kind, String state, String username, UUID retryOf, int total, int ready,
                    int queued, int running, int succeeded, int skipped, int failed, OffsetDateTime createdAt,
-                   OffsetDateTime finishedAt, OffsetDateTime confirmedAt, JsonNode scope) {}
-    record ItemView(int sequence, String target, String paperId, String state, String message, JsonNode result) {}
+                   OffsetDateTime finishedAt, OffsetDateTime confirmedAt, JsonNode scope, boolean canRetry) {}
+    record ItemView(int sequence, String target, String paperId, String state, String message, JsonNode result,
+                    boolean inputError, PreflightView preflight) {}
+    record PreflightView(String status, String originalPath, String reason, String existingPaperId) {}
 
     @PostMapping(path = "/imports", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
     @ResponseStatus(HttpStatus.CREATED)
@@ -72,13 +75,12 @@ public class JobController {
     }
 
     @GetMapping("/jobs/{jobId}/items")
-    Page<ItemView> items(@PathVariable UUID jobId, @RequestParam(defaultValue = "0") int page,
-                         @RequestParam(defaultValue = "20") int size) {
+    Page<ItemView> items(@PathVariable UUID jobId, @RequestParam(required = false) String state,
+                         @RequestParam(defaultValue = "0") int page, @RequestParam(defaultValue = "20") int size) {
         var job = jobs.get(jobId);
-        var items = jobs.items(jobId, size, Page.offset(page, size)).stream()
-                .map(item -> new ItemView(item.sequence(), item.target(), item.paperId(), item.state(), item.message(),
-                        json.tree(item.result()))).toList();
-        return new Page<>(items, page, size, job.total());
+        var items = jobs.items(jobId, state, size, Page.offset(page, size)).stream().map(this::view).toList();
+        long total = state == null || state.isEmpty() ? job.total() : jobs.countItems(jobId, state);
+        return new Page<>(items, page, size, total);
     }
 
     @PostMapping("/jobs/{jobId}/retry")
@@ -91,6 +93,28 @@ public class JobController {
     private JobView view(JobSummary job) {
         return new JobView(job.jobId(), job.kind(), job.state(), job.username(), job.retryOf(), job.total(),
                 job.ready(), job.queued(), job.running(), job.succeeded(), job.skipped(), job.failed(), job.createdAt(),
-                job.finishedAt(), job.confirmedAt(), json.tree(job.scope()));
+                job.finishedAt(), job.confirmedAt(), json.tree(job.scope()), job.canRetry());
+    }
+
+    private ItemView view(JobItem item) {
+        JsonNode result = json.tree(item.result());
+        PreflightView preflight = null;
+        if (item.kind() == JobKind.ORIGINAL_IMPORT) {
+            preflight = preflight(item, result);
+            if (result instanceof ObjectNode fields && fields.remove(OriginalImports.PREFLIGHT_PATH) != null && fields.isEmpty()) {
+                result = null;
+            }
+        }
+        return new ItemView(item.sequence(), item.target(), item.paperId(), item.state(), item.message(), result,
+                item.inputError(), preflight);
+    }
+
+    private PreflightView preflight(JobItem item, JsonNode result) {
+        if (!"{}".equals(item.input())) {
+            return new PreflightView("IMPORTABLE", json.tree(item.input()).path("entry").asText(null), null, null);
+        }
+        String path = result == null ? null : result.path(OriginalImports.PREFLIGHT_PATH).asText(null);
+        String existing = result == null ? null : result.path("paperId").asText(null);
+        return new PreflightView(item.inputError() ? "ERROR" : "DUPLICATE", path, item.message(), existing);
     }
 }

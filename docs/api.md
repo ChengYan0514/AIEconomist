@@ -118,7 +118,9 @@ source_id,year,paper_title,authors,file_path
 S123,2024,Example paper,Alice;Bob,files/paper.pdf
 ```
 
-用实际的出版来源 ID 替换示例中的 `S123`。上传后先查看 `GET /api/jobs/{jobId}/items`。`READY` 可确认导入，`SKIPPED` 表示重复，`FAILED` 的 `message` 给出问题。若无 `READY` 项，确认返回 `409`。确认后查询同一任务 UUID，重复确认会返回同一任务的当前摘要。预检失败的行需要修正后重新上传，执行阶段失败的行可在任务结束后重试。
+用实际的出版来源 ID 替换示例中的 `S123`。上传响应的 `ready` 给出全批通过条数。`GET /api/jobs/{jobId}/items` 的 `sequence` 从 1 开始，表示不含表头的 CSV 数据记录位序。`preflight` 返回通过（`IMPORTABLE`）、重复（`DUPLICATE`）或有问题（`ERROR`）的分类，以及包内路径 `originalPath`、原因 `reason` 和重复的既有论文 ID `existingPaperId`。旧任务未保存的路径返回 `null`。
+
+仅有 `READY` 项会进入队列，执行时复核重复。若无 `READY` 项，确认返回 `409`。确认后查询同一任务 UUID，重复确认会返回同一任务的当前摘要。任务项的 `state`、`message` 和 `result` 反映当前结果，仍可通过 `preflight` 查阅预检。预检失败的行需要修正后重新上传，执行阶段失败的行可在任务结束后重试。
 
 ## 任务查询和处理
 
@@ -127,7 +129,7 @@ S123,2024,Example paper,Alice;Bob,files/paper.pdf
 | `POST /api/jobs` | JSON `kind` 和处理范围 | `202`，新任务摘要 |
 | `GET /api/jobs` | 可选 `kind`、`state`、`page`、`size` | `200`，按创建时间倒序的任务分页 |
 | `GET /api/jobs/{jobId}` | 任务 UUID | `200`，任务摘要 |
-| `GET /api/jobs/{jobId}/items` | 任务 UUID，可选 `page`、`size` | `200`，按 `sequence` 排序的任务项分页 |
+| `GET /api/jobs/{jobId}/items` | 任务 UUID，可选 `state`、`page`、`size` | `200`，按 `sequence` 排序的任务项分页 |
 | `POST /api/jobs/{jobId}/retry` | 已结束且存在可重试失败项的任务 UUID，无请求体 | `202`，只包含可重试失败项的新任务摘要 |
 
 | `kind` | 提交时的范围与用途 |
@@ -140,11 +142,11 @@ S123,2024,Example paper,Alice;Bob,files/paper.pdf
 
 `paperIds` 和 `sourceId` 二选一。`paperIds` 至少包含一个论文 ID，每个 ID 最长 255 个字符，服务端对重复 ID 去重。通过 `sourceId` 提交时，可加 `yearFrom`、`yearTo`，规则与论文筛选相同。每个论文处理任务最多接收 10,000 篇论文，提交时固定目标集合。归档论文、已有匹配或不符合当前处理阶段的输入可被跳过，具体见逐项 `message`。
 
-任务摘要返回 `jobId`、`kind`、`state`、`username`、`retryOf`、`createdAt`、`finishedAt`、`confirmedAt`、`scope`，以及 `total`、`ready`、`queued`、`running`、`succeeded`、`skipped`、`failed` 计数。`retryOf`、`finishedAt`、`confirmedAt` 可为 `null`。`scope` 包含来源范围、`selectedCount` 或 ZIP 的 `filename`。重试响应的 `retryOf` 指向原任务，后续使用新 `jobId` 查询结果。
+任务摘要返回 `jobId`、`kind`、`state`、`username`、`retryOf`、`createdAt`、`finishedAt`、`confirmedAt`、`scope`，以及 `total`、`ready`、`queued`、`running`、`succeeded`、`skipped`、`failed` 计数和 `canRetry`。`retryOf`、`finishedAt`、`confirmedAt` 可为 `null`。`scope` 包含来源范围、`selectedCount` 或 ZIP 的 `filename`。`canRetry` 表示整个任务已经结束并有可重试的失败项，调用者还需相应任务类型的执行权限。重试范围包含整个任务中符合条件的失败项，重试响应的 `retryOf` 指向原任务。
 
 任务摘要状态为 `READY`、`QUEUED`、`RUNNING`、`SUCCEEDED`、`FAILED`、`PARTIAL`。`READY` 表示有项目等待确认。`queued + running` 大于零时可继续轮询。终态中，有成功项和失败项时为 `PARTIAL`，有失败项且无成功项时为 `FAILED`，无失败项时为 `SUCCEEDED`，包括全部跳过的情况。
 
-任务项返回 `sequence`、`target`、`paperId`、`state`、`message`、`result`。项状态为 `READY`、`QUEUED`、`RUNNING`、`SUCCEEDED`、`SKIPPED`、`FAILED`。`paperId`、`message`、`result` 可为 `null`。`result` 随类型变化，例如导入原件的 `{paperId}`、OpenAlex 元数据导入的 `{imported}`、匹配的 `{message, candidates, matched}`，以及解析执行时登记的 `{taskId, fileId, uploaded}`。当 `succeeded`、`skipped` 或 `failed` 非零时，可在任务项中进一步判断每个目标的结果。
+任务项返回 `sequence`、`target`、`paperId`、`state`、`message`、`result` 和 `inputError`。`inputError` 为真时，需修正 ZIP 输入并重新上传。项状态为 `READY`、`QUEUED`、`RUNNING`、`SUCCEEDED`、`SKIPPED`、`FAILED`。`state` 按任务项状态精确筛选，空值返回所有状态，其他非空值返回空列表。任务项的分页总数按筛选结果计算，任务摘要继续统计整个任务。`paperId`、`message`、`result` 可为 `null`。`result` 随类型变化，例如导入原件的 `{paperId}`、OpenAlex 元数据导入的 `{imported}`、匹配的 `{message, candidates, matched}`，以及解析执行时登记的 `{taskId, fileId, uploaded}`。当 `succeeded`、`skipped` 或 `failed` 非零时，可在任务项中进一步判断每个目标的结果。
 
 ## OpenAlex 出版来源和匹配
 
@@ -186,6 +188,12 @@ S123,2024,Example paper,Alice;Bob,files/paper.pdf
 这些接口需要系统管理员权限。内置角色 ID 和权限固定，自定义角色 ID 由服务端生成。自定义角色可包含业务权限，权限依赖由目录的 `requires` 字段提供且保存时校验。CSV 可独立授权。出版来源搜索也向有文件解析或解析内容导入权限的用户开放，以便按出版来源提交处理任务。
 
 人数及成员包含启用和停用用户。编辑期间分配人数变化时返回 `409 ROLE_ASSIGNMENTS_CHANGED`。将所有成员重新分配后方可删除，否则返回 `409 ROLE_IN_USE`。角色调配或权限变更后，已有会话的后续请求立即使用新权限。
+
+## 系统状态
+
+仅系统管理员可请求 `GET /api/system-status`。每次请求重新检查 PostgreSQL 应用查询、MinerU 健康接口、新版文件存储的读写、旧版文件存储的读取，以及配置的 OpenAlex 快照必需表。每项检查最多等待 2 秒。单项故障仍返回 `200` 和其他检查结果。响应禁止缓存。
+
+`checks` 中的每项包含 `dependency`、`state`、`checkedAt` 和固定的简短 `message`。状态可为 `HEALTHY`、`UNAVAILABLE` 或 `NOT_CHECKED`。已检查的结果包含 ISO 8601 时间。有效配置 `configuration` 包含应用构建版本 `version`、有效的单个原件和 ZIP 上传上限 `maxOriginalBytes`、`maxZipBytes`（以字节计），以及任务论文目标上限 `maxJobTargets`。上传上限取表单请求、文件和业务限制的最小值。表单字段和边界也计入请求大小。
 
 ## 审计日志
 

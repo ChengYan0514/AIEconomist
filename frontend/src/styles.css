@@ -115,6 +115,19 @@ input[type="checkbox"] { accent-color: var(--accent); width: 15px; height: 15px;
 .panel-bar { min-height: 61px; display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 9px 17px; border-bottom: 1px solid var(--line); flex-wrap: wrap; }
 .panel-title { display: flex; align-items: center; gap: 9px; color: var(--ink); }
 .panel-title svg { color: var(--accent); }
+.overview-section + .overview-section { margin-top: 24px; }
+.overview-heading { display: flex; align-items: baseline; gap: 12px; margin-bottom: 12px; }
+.overview-heading h2 { margin: 0; font-size: 1.125rem; font-weight: 650; }
+.overview-heading > span { color: var(--muted); font-size: .875rem; }
+.overview-jobs-heading { justify-content: space-between; align-items: center; }
+.overview-jobs-heading a { font-size: .875rem; }
+.overview-counts { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; }
+.overview-count { display: grid; align-content: start; justify-items: start; gap: 10px; min-height: 117px; padding: 16px; }
+.overview-count-label { width: 100%; display: flex; align-items: center; justify-content: space-between; gap: 4px; }
+.overview-count-label > svg { color: var(--accent); }
+.overview-count strong { font-size: 1.9rem; line-height: 1.2; font-variant-numeric: tabular-nums; }
+a.overview-count:hover { border-color: var(--accent); background: var(--accent-light); }
+.overview-count-feedback { display: flex; flex-wrap: wrap; align-items: center; gap: 4px; color: #a6263e; font-size: .8125rem; }
 .panel-tabs { display: flex; align-items: center; gap: 4px; }
 .panel-tabs button, .segmented button {
   min-height: 37px; padding: 0 11px; display: inline-flex; align-items: center; justify-content: center;
@@ -137,6 +150,16 @@ input[type="checkbox"] { accent-color: var(--accent); width: 15px; height: 15px;
 .data-table { border-collapse: collapse; width: 100%; text-align: left; font-size: .875rem; }
 .paper-table { min-width: 690px; }
 .job-table { min-width: 688px; }
+.overview-job-table { min-width: 690px; }
+.overview-job-table td:first-child { min-width: 9rem; }
+.overview-job-scope { min-width: 9rem; max-width: 20rem; overflow-wrap: anywhere; }
+.system-status-table { min-width: 570px; }
+.system-status-table tbody th { background: transparent; }
+.system-status-table tbody tr:last-child th { border-bottom: 0; }
+.system-status-configuration { display: grid; grid-template-columns: minmax(8.5rem, 28%) minmax(0, 1fr); overflow: hidden; font-size: .875rem; }
+.system-status-configuration > * { margin: 0; padding: 12px 17px; border-bottom: 1px solid var(--line); overflow-wrap: anywhere; }
+.system-status-configuration dt { background: #f2f5f5; font-weight: 650; }
+.system-status-configuration > :nth-last-child(-n+2) { border-bottom: 0; }
 .data-table th {
   padding: 11px 12px; background: #f2f5f5; color: var(--ink); font-weight: 650; white-space: nowrap;
   border-bottom: 1px solid var(--line);
@@ -264,6 +287,9 @@ input[type="checkbox"] { accent-color: var(--accent); width: 15px; height: 15px;
 .job-overview > div > span:first-child { display: block; font-size: .85rem; color: var(--muted); margin-bottom: 8px; }
 .job-overview strong { font-size: .9rem; }
 .result-cell { min-width: 180px; max-width: 580px; overflow-wrap: anywhere; }
+.zip-result-table { min-width: 660px; }
+.zip-result-table .title-cell { width: auto; min-width: 165px; }
+.zip-entry { min-width: 145px; max-width: 30ch; overflow-wrap: anywhere; }
 .candidate-picker { display: grid; gap: 7px; margin-top: 8px; }
 .source-search { display: flex; gap: 9px; padding: 13px 17px; border-bottom: 1px solid var(--line); }
 .source-search .search-box { flex: 1; }
@@ -321,10 +347,14 @@ input[type="checkbox"] { accent-color: var(--accent); width: 15px; height: 15px;
   .detail-aside { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .section-header { flex-wrap: wrap; align-items: start; }
 }
+@media (max-width: 700px) {
+  .overview-counts { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
 @media (max-width: 560px) {
   .page-content { padding-top: 14px; }
   .section-header { margin-bottom: 15px; }
   .section-actions .action-button { padding-inline: 9px; gap: 6px; }
+  .overview-count { min-height: 101px; padding: 12px; }
   .filter-bar { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .panel-bar { padding-inline: 9px; }
   .detail-aside, .job-overview { grid-template-columns: minmax(0, 1fr); }

@@ -5,4 +5,8 @@ import java.util.UUID;
 public record JobItem(
         UUID jobId, JobKind kind, int sequence, String target, String paperId, Long fileRevision, Long recordVersion,
         String input, String state, String message, String result
-) {}
+) {
+    public boolean inputError() {
+        return kind == JobKind.ORIGINAL_IMPORT && "FAILED".equals(state) && "{}".equals(input);
+    }
+}

@@ -1,6 +1,7 @@
 export type PaperStatus = "UNPROCESSED" | "READY" | "PUBLISHED" | "FAILED" | "UNSUPPORTED"
 export type JobKind = "ORIGINAL_IMPORT" | "PARSE" | "PUBLISH" | "MATCH" | "METADATA"
-export type JobState = "READY" | "QUEUED" | "RUNNING" | "SUCCEEDED" | "SKIPPED" | "FAILED" | "PARTIAL"
+export type JobItemState = "READY" | "QUEUED" | "RUNNING" | "SUCCEEDED" | "SKIPPED" | "FAILED"
+export type JobState = Exclude<JobItemState, "SKIPPED"> | "PARTIAL"
 
 export interface Page<T> {
   items: T[]
@@ -59,12 +60,13 @@ export interface Job {
   succeeded: number
   skipped: number
   failed: number
+  canRetry: boolean
   username: string
   retryOf: string | null
   createdAt: string
   finishedAt: string | null
   confirmedAt: string | null
-  scope: { sourceId?: string; filename?: string; yearFrom?: number; yearTo?: number }
+  scope: { sourceId?: string; filename?: string; yearFrom?: number; yearTo?: number; selectedCount?: number }
 }
 
 export interface Work {
@@ -79,7 +81,16 @@ export interface JobItem {
   sequence: number
   target: string
   paperId: string | null
-  state: JobState
+  state: JobItemState
+  inputError: boolean
   message: string | null
   result: { candidates?: Work[]; matched?: boolean; imported?: number; paperId?: string } | null
+  preflight: OriginalPreflight | null
+}
+
+export interface OriginalPreflight {
+  status: "IMPORTABLE" | "DUPLICATE" | "ERROR"
+  originalPath: string | null
+  reason: string | null
+  existingPaperId: string | null
 }

@@ -11,7 +11,7 @@ import java.util.Map;
 import java.util.UUID;
 
 public final class JobService {
-    private static final int MAX_TARGETS = 10000;
+    public static final int MAX_TARGETS = 10000;
     private final JobStore jobs;
     private final PaperService papers;
     private final JobJson json;
@@ -58,8 +58,7 @@ public final class JobService {
     public JobSummary retry(UUID previous, String username) {
         return transactions.execute(status -> {
             JobSummary old = get(previous);
-            if (old.failed() == 0 || old.ready() + old.queued() + old.running() != 0 ||
-                    (old.kind() == JobKind.ORIGINAL_IMPORT && old.confirmedAt() == null)) {
+            if (!old.finishedWithFailures()) {
                 throw new JobConflict("只有已完成任务的失败项可重试");
             }
             UUID id = UUID.randomUUID();
@@ -84,8 +83,12 @@ public final class JobService {
         return jobs.count(kind, state);
     }
 
-    public List<JobItem> items(UUID id, int size, long offset) {
-        return jobs.items(id, size, offset);
+    public List<JobItem> items(UUID id, String state, int size, long offset) {
+        return jobs.items(id, state, size, offset);
+    }
+
+    public long countItems(UUID id, String state) {
+        return jobs.countItems(id, state);
     }
 
     private List<JobItem> prepare(UUID id, JobRequest request) {

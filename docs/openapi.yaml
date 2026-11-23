@@ -334,6 +334,19 @@ paths:
         '400': {$ref: '#/components/responses/Error'}
         '401': {$ref: '#/components/responses/Error'}
         '403': {$ref: '#/components/responses/Error'}
+  /system-status:
+    get:
+      operationId: checkSystemStatus
+      description: 仅系统管理员可用。每次请求独立检查五项依赖。某项不可用时仍返回其余结果。响应禁止缓存。
+      responses:
+        '200':
+          description: 依赖检查结果与允许展示的生效配置
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/SystemStatus'}
+        '401': {$ref: '#/components/responses/Error'}
+        '403': {$ref: '#/components/responses/Error'}
+        '500': {$ref: '#/components/responses/Error'}
   /audit-events:
     get:
       operationId: listAuditEvents
@@ -556,6 +569,7 @@ paths:
     parameters: [{$ref: '#/components/parameters/JobId'}]
     post:
       operationId: confirmOriginals
+      description: 将通过预检的任务项加入队列，执行时复核重复。重复确认返回同一任务的当前摘要。
       responses:
         '202': {$ref: '#/components/responses/Job'}
         '400': {$ref: '#/components/responses/Error'}
@@ -621,10 +635,16 @@ paths:
     parameters: [{$ref: '#/components/parameters/JobId'}]
     get:
       operationId: listJobItems
-      parameters: [{$ref: '#/components/parameters/Page'}, {$ref: '#/components/parameters/Size'}]
+      parameters:
+        - {$ref: '#/components/parameters/Page'}
+        - {$ref: '#/components/parameters/Size'}
+        - name: state
+          in: query
+          description: 按 JobItemState 中的状态精确筛选，省略或传空字符串时返回所有状态。其他非空值返回空列表。
+          schema: {type: string}
       responses:
         '200':
-          description: 操作对象的逐项结果
+          description: 按 sequence 排序的任务项。先筛选再分页，total 为符合筛选条件的任务项总数。任务摘要始终统计整个任务。
           content:
             application/json:
               schema:
@@ -635,14 +655,17 @@ paths:
                         type: array
                         items: {$ref: '#/components/schemas/JobItem'}
         '400': {$ref: '#/components/responses/Error'}
+        '403': {$ref: '#/components/responses/Error'}
         '404': {$ref: '#/components/responses/Error'}
   /jobs/{jobId}/retry:
     parameters: [{$ref: '#/components/parameters/JobId'}]
     post:
       operationId: retryJob
+      description: 重试原任务中所有符合条件的失败项。返回的新任务通过 retryOf 指向原任务。
       responses:
         '202': {$ref: '#/components/responses/Job'}
         '400': {$ref: '#/components/responses/Error'}
+        '403': {$ref: '#/components/responses/Error'}
         '404': {$ref: '#/components/responses/Error'}
         '409': {$ref: '#/components/responses/Error'}
 components:
@@ -799,6 +822,37 @@ components:
         page: {type: integer}
         size: {type: integer}
         total: {type: integer, format: int64}
+    SystemStatus:
+      type: object
+      additionalProperties: false
+      required: [checks, configuration]
+      properties:
+        checks:
+          type: array
+          minItems: 5
+          maxItems: 5
+          description: 每项依赖恰好返回一个结果。
+          items: {$ref: '#/components/schemas/DependencyCheck'}
+        configuration:
+          type: object
+          additionalProperties: false
+          required: [version, maxOriginalBytes, maxZipBytes, maxJobTargets]
+          properties:
+            version: {type: string, description: 当前应用的构建版本}
+            maxOriginalBytes: {type: integer, format: int64, minimum: 0}
+            maxZipBytes: {type: integer, format: int64, minimum: 0}
+            maxJobTargets: {type: integer, minimum: 1}
+    DependencyCheck:
+      type: object
+      additionalProperties: false
+      required: [dependency, state, checkedAt, message]
+      properties:
+        dependency:
+          type: string
+          enum: [POSTGRESQL, MINERU, CURRENT_STORAGE, LEGACY_STORAGE, OPENALEX_SNAPSHOT]
+        state: {type: string, enum: [HEALTHY, UNAVAILABLE, NOT_CHECKED]}
+        checkedAt: {type: [string, 'null'], format: date-time, description: 取得结果的时间。未检查时为空。}
+        message: {type: string, description: 固定的简短说明，不包含部署配置或底层异常文本。}
     AuditOutcome:
       type: string
       enum: [SUCCEEDED, FAILED, DENIED]
@@ -869,9 +923,12 @@ components:
     JobState:
       type: string
       enum: [READY, QUEUED, RUNNING, SUCCEEDED, FAILED, PARTIAL]
+    JobItemState:
+      type: string
+      enum: [READY, QUEUED, RUNNING, SUCCEEDED, SKIPPED, FAILED]
     Job:
       type: object
-      required: [jobId, kind, state, total, ready, queued, running, succeeded, skipped, failed, username, retryOf, createdAt, finishedAt, confirmedAt, scope]
+      required: [jobId, kind, state, total, ready, queued, running, succeeded, skipped, failed, canRetry, username, retryOf, createdAt, finishedAt, confirmedAt, scope]
       properties:
         jobId: {type: string, format: uuid}
         kind: {$ref: '#/components/schemas/JobKind'}
@@ -883,6 +940,7 @@ components:
         succeeded: {type: integer}
         skipped: {type: integer}
         failed: {type: integer}
+        canRetry: {type: boolean, description: 任务已完成且有可重试的失败项。调用者还需要任务对应的执行权限。}
         username: {type: string}
         retryOf: {type: [string, 'null'], format: uuid}
         createdAt: {type: string, format: date-time}
@@ -891,11 +949,25 @@ components:
         scope: {type: object, description: 来源范围、所选论文数量 selectedCount，或 ZIP 文件名 filename}
     JobItem:
       type: object
-      required: [sequence, target, paperId, state, message, result]
+      required: [sequence, target, paperId, state, inputError, message, result, preflight]
       properties:
-        sequence: {type: integer}
+        sequence: {type: integer, description: ZIP 导入时为从 1 开始的 CSV 数据记录位序，不含表头。}
         target: {type: string}
         paperId: {type: [string, 'null']}
-        state: {type: string, enum: [READY, QUEUED, RUNNING, SUCCEEDED, SKIPPED, FAILED]}
+        state: {$ref: '#/components/schemas/JobItemState'}
+        inputError: {type: boolean, description: 此项在 ZIP 预检阶段失败，需要修正后重新上传。}
         message: {type: [string, 'null']}
         result: {type: [object, 'null']}
+        preflight:
+          oneOf:
+            - $ref: '#/components/schemas/OriginalPreflight'
+            - type: 'null'
+          description: ZIP 行的预检结果，执行后仍可读取。其他任务返回 null。
+    OriginalPreflight:
+      type: object
+      required: [status, originalPath, reason, existingPaperId]
+      properties:
+        status: {type: string, enum: [IMPORTABLE, DUPLICATE, ERROR]}
+        originalPath: {type: [string, 'null'], description: CSV 中的包内原件路径。未填写路径或旧任务未记录路径时为空。}
+        reason: {type: [string, 'null'], description: 预检发现重复或问题的原因。}
+        existingPaperId: {type: [string, 'null'], description: 预检发现已登记的重复论文时返回其实际 ID。}
