@@ -10,6 +10,7 @@ import org.junit.jupiter.api.condition.EnabledIfEnvironmentVariable;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.mock.web.MockHttpSession;
 import org.springframework.mock.web.MockMultipartFile;
 import org.springframework.test.context.DynamicPropertyRegistry;
@@ -17,6 +18,8 @@ import org.springframework.test.context.DynamicPropertySource;
 import org.springframework.test.web.servlet.MockMvc;
 
 import java.nio.charset.StandardCharsets;
+import java.util.concurrent.FutureTask;
+import java.util.concurrent.TimeUnit;
 
 import static com.paperflow.integration.WorkspaceFixture.PDF;
 import static org.assertj.core.api.Assertions.assertThat;
@@ -30,6 +33,7 @@ class OpenAlexReviewHttpTest {
     private static WorkspaceFixture fixture;
     @Autowired MockMvc mvc;
     @Autowired ObjectMapper json;
+    @Autowired JdbcTemplate jdbc;
     private WorkspaceHttp http;
     private MockHttpSession admin;
 
@@ -84,6 +88,47 @@ class OpenAlexReviewHttpTest {
         var choice = json.createObjectNode().put("workId", "W124").put("version", version);
         mvc.perform(http.write(post("/api/papers/{id}/match", paper), admin, choice))
                 .andExpect(status().isConflict()).andExpect(jsonPath("$.code").value(reason));
+    }
+
+    @Test
+    void rejectsAConfirmedCandidateWhenAnImportShadowsItBeforeThePaperCanBeBound() throws Exception {
+        jdbc.update("INSERT INTO work VALUES ('W900', 2030, 'Legacy candidate', '10.1/shadow-original')");
+        jdbc.update("INSERT INTO work_source VALUES ('W900', 'S123')");
+        jdbc.update("INSERT INTO " + fixture.snapshot() + ".works VALUES ('W900', 2030, 'Replacement snapshot title', '10.1/shadow-replaced')");
+        jdbc.update("INSERT INTO " + fixture.snapshot() + ".works_locations VALUES ('W900', 'S123')");
+        var pdf = new MockMultipartFile("file", "shadow.pdf", "application/pdf", PDF.getBytes(StandardCharsets.US_ASCII));
+        var upload = multipart("/api/papers").file(pdf).param("sourceId", "S123").param("year", "2030")
+                .param("title", "Shadowed candidate").param("authors", "Local Author").param("doi", "10.1/shadow-original");
+        var open = http.body(mvc.perform(http.write(upload, admin, null)).andExpect(status().isCreated()).andReturn());
+        String paper = open.path("paperId").asText();
+        var choice = json.createObjectNode().put("workId", "W900").put("version", open.path("version").asLong());
+        var confirm = http.write(post("/api/papers/{id}/match", paper), admin, choice);
+        var response = new FutureTask<>(() -> mvc.perform(confirm).andReturn());
+        try (var connection = jdbc.getDataSource().getConnection();
+             var lock = connection.prepareStatement("SELECT paper_id FROM v2_paper WHERE paper_id = ? FOR UPDATE")) {
+            connection.setAutoCommit(false);
+            lock.setString(1, paper);
+            lock.executeQuery().close();
+            new Thread(response, "test-candidate-confirmation").start();
+            awaitBlockedPaperLock();
+            await(start(json.createObjectNode().put("kind", "METADATA").put("sourceId", "S123").put("yearFrom", 2030)));
+            connection.commit();
+        }
+        var result = response.get(10, TimeUnit.SECONDS);
+        assertThat(result.getResponse().getStatus()).isEqualTo(409);
+        assertThat(http.body(result).path("code").asText()).isEqualTo("CANDIDATE_MISSING");
+        mvc.perform(get("/api/papers/{id}", paper).session(admin)).andExpect(jsonPath("$.matchedWorkId").isEmpty());
+    }
+
+    private void awaitBlockedPaperLock() throws InterruptedException {
+        for (int attempt = 0; attempt < 100; attempt++) {
+            if (Boolean.TRUE.equals(jdbc.queryForObject("""
+                    SELECT EXISTS (SELECT FROM pg_stat_activity WHERE wait_event_type = 'Lock'
+                                   AND query LIKE '%SELECT 1 FROM v2_paper WHERE paper_id = % FOR UPDATE%')
+                    """, Boolean.class))) return;
+            Thread.sleep(30);
+        }
+        throw new AssertionError("Confirmation did not reach the paper lock");
     }
 
     private String start(JsonNode input) throws Exception {

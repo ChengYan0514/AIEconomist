@@ -24,6 +24,9 @@
                ), '') AS authors
         FROM selected s ORDER BY s.id
     </select>
+    <select id="lockSource" resultType="boolean">
+        SELECT true FROM pg_advisory_xact_lock(hashtext(current_schema() || ':openalex'), hashtext(#{sourceId}))
+    </select>
     <insert id="save">
         INSERT INTO v2_openalex_work (source_id, work_id, year, title, doi, authors)
         VALUES <foreach collection="works" item="w" separator=",">

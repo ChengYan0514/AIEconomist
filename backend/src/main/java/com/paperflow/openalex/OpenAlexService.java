@@ -46,7 +46,11 @@ public final class OpenAlexService {
             if (batch.isEmpty()) return imported;
             var rows = batch.stream().map(work -> new Work(work.workId(), work.year(), work.title(),
                     PaperMetadata.doi(work.doi()), work.authors())).toList();
-            catalog.save(source, rows);
+            transactions.executeWithoutResult(status -> {
+                catalog.lockSource(source);
+                checkClaim.run();
+                catalog.save(source, rows);
+            });
             after = batch.get(batch.size() - 1).workId();
             imported += batch.size();
         }
@@ -63,7 +67,7 @@ public final class OpenAlexService {
         if (proposals.size() > 1) return new MatchResult("找到多个候选，请确认关联", proposals, false, source);
         try {
             var matched = new MatchResult("匹配成功", proposals, true, source);
-            bind(id, expectedVersion, proposals.get(0).workId(), checkClaim, result -> afterMatch.accept(matched));
+            bind(id, expectedVersion, proposals.get(0).workId(), false, checkClaim, result -> afterMatch.accept(matched));
             return matched;
         } catch (PaperConflict conflict) {
             if (!"WORK_ALREADY_BOUND".equals(conflict.code())) throw conflict;
@@ -72,14 +76,17 @@ public final class OpenAlexService {
     }
 
     public Paper confirm(String id, long expectedVersion, String workId, String actor) {
-        Paper paper = papers.get(id);
-        paper.requireCurrent(expectedVersion);
-        if (workId == null || candidates(paper).stream().noneMatch(work -> work.workId().equals(workId))) {
-            throw new PaperConflict("CANDIDATE_MISSING", "候选已变化，请重新匹配");
-        }
-        return bind(id, expectedVersion, workId, () -> {}, updated ->
+        return bind(id, expectedVersion, workId, true, () -> {}, updated ->
                 audit.record(actor, "PAPER_MATCH_CONFIRM", "PAPER", id, AuditOutcome.SUCCEEDED,
                         Map.of("workId", updated.matchedWorkId(), "version", updated.version())));
+    }
+
+    private void requireCandidate(Paper paper, String workId) {
+        if (workId != null && paper.sourceId() != null) {
+            catalog.lockSource(paper.sourceId());
+            if (candidates(paper).stream().anyMatch(work -> work.workId().equals(workId))) return;
+        }
+        throw new PaperConflict("CANDIDATE_MISSING", "候选已变化，请重新匹配");
     }
 
     private List<Work> candidates(Paper paper) {
@@ -98,11 +105,12 @@ public final class OpenAlexService {
                 .toList();
     }
 
-    private Paper bind(String id, long version, String workId, Runnable checkClaim, Consumer<Paper> afterBind) {
+    private Paper bind(String id, long version, String workId, boolean confirmCandidate, Runnable checkClaim, Consumer<Paper> afterBind) {
         try {
             return transactions.execute(status -> {
                 checkClaim.run();
                 var current = papers.lock(id, version);
+                if (confirmCandidate) requireCandidate(current, workId);
                 current.requireActive();
                 String owner = catalog.boundLegacyPaper(workId);
                 if ((current.matchedWorkId() != null && !current.matchedWorkId().equals(workId)) ||

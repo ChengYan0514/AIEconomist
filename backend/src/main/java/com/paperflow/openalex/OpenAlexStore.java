@@ -5,6 +5,7 @@ import java.util.List;
 public interface OpenAlexStore {
     List<Source> sources(String schema, String q);
     List<Work> snapshotWorks(String schema, String sourceId, Integer yearFrom, Integer yearTo, String after);
+    boolean lockSource(String sourceId);
     int save(String sourceId, List<Work> works);
     List<Work> byDoi(String sourceId, String doi);
     List<Work> byYear(String sourceId, int year);

@@ -561,7 +561,7 @@ paths:
     parameters: [{$ref: '#/components/parameters/PaperId'}]
     post:
       operationId: confirmMatch
-      description: 使用打开候选复核时读取的论文版本确认关联。服务端重新校验论文版本、当前候选与作品唯一性。
+      description: 使用打开候选复核时读取的论文版本确认关联。服务端在关联事务内重新校验论文版本、当前候选与作品唯一性。
       requestBody:
         required: true
         content:
