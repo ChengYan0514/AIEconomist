@@ -18,7 +18,7 @@ export function Login({ serviceError }: { serviceError?: string }) {
     const credentials = Object.fromEntries(new FormData(event.currentTarget))
     try {
       await api("/session", { method: "POST", body: JSON.stringify(credentials) })
-      if (window.location.pathname === "/") window.location.assign("/papers")
+      if (window.location.pathname === "/") window.location.assign("/overview")
       else window.location.reload()
     } catch (reason) {
       setError(errorMessage(reason))

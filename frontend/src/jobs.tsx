@@ -1,7 +1,7 @@
 import { ArrowLeft, CalendarDays, CircleHelp, ClipboardList, FileArchive, RotateCcw, Workflow } from "lucide-react"
 import { useEffect, useState } from "react"
 import { api, dateLabel, errorMessage, jobPath, paperPath, params, useQuery } from "./api"
-import { Empty, JobChip, Loading, Notice, Pagination, jobKinds, jobLabels } from "./components/shared"
+import { Empty, JobChip, JobProgress, Loading, Notice, Pagination, jobKinds, jobLabels } from "./components/shared"
 import { Button } from "./components/ui/button"
 import { SectionHeader } from "./components/workspace"
 import { ArchiveUpload, ProcessPapers } from "./papers/forms"
@@ -45,7 +45,7 @@ export function Jobs() {
             <tbody>{rows.map((job) => <tr key={job.jobId}>
               <td className="title-cell"><a href={jobPath(job.jobId)}>{jobKinds[job.kind]}</a><small>{job.scope?.filename || job.scope?.sourceId || "所选论文"}</small></td>
               <td><JobChip status={job.state} /></td>
-              <td><Progress job={job} /></td><td>{job.username}</td><td className="table-date">{dateLabel(job.createdAt)}</td>
+              <td><JobProgress job={job} /></td><td>{job.username}</td><td className="table-date">{dateLabel(job.createdAt)}</td>
               <td><Button asChild variant="ghost" size="sm"><a href={jobPath(job.jobId)}>查看任务</a></Button></td>
             </tr>)}</tbody></table></div>}
       {result.data && <Pagination total={result.data.total} page={page} size={size} change={setPage} />}
@@ -94,7 +94,7 @@ export function JobDetail({ id }: { id: string }) {
     {error && <Notice error>{error}</Notice>}
     <div className="panel job-overview">
       <div><span>当前状态</span><JobChip status={job.state} /></div>
-      <div><span>处理进度</span><Progress job={job} /></div>
+      <div><span>处理进度</span><JobProgress job={job} /></div>
       <div><span>结果</span><strong>{job.ready > 0 ? job.ready + " 条待确认 · " : ""}{job.succeeded} 成功 · {job.skipped} 跳过 · {job.failed} 失败</strong></div>
       <div><span>提交时间</span><strong className="inline-flex items-center gap-2"><CalendarDays size={15} />{dateLabel(job.createdAt)}</strong></div>
     </div>
@@ -176,11 +176,6 @@ function CandidatePicker({ item }: { item: JobItem }) {
     </select><Button type="button" size="sm" disabled={!selected || busy} onClick={match}>确认匹配</Button></div>
     {error && <Notice error>{error}</Notice>}
   </div>
-}
-
-function Progress({ job }: { job: Job }) {
-  const complete = job.succeeded + job.skipped + job.failed
-  return <div className="job-progress"><progress max={Math.max(job.total, 1)} value={complete} /><small>{complete} / {job.total}</small></div>
 }
 
 function active(job: Job) {
