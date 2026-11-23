@@ -32,7 +32,7 @@ export async function api<T>(path: string, init: RequestInit = {}): Promise<T> {
 }
 
 export function useQuery<T>(path: string | null, timeoutMs?: number) {
-  const [data, setData] = useState<T>()
+  const [result, setResult] = useState<{ data: T; path: string }>()
   const [error, setError] = useState<Error>()
   const [loading, setLoading] = useState(Boolean(path))
   const [count, setCount] = useState(0)
@@ -44,8 +44,8 @@ export function useQuery<T>(path: string | null, timeoutMs?: number) {
     setLoading(true)
     setError(undefined)
     const signal = timeoutMs === undefined ? undefined : AbortSignal.timeout(timeoutMs)
-    api<T>(path, { signal }).then((result) => {
-      if (active) setData(result)
+    api<T>(path, { signal }).then((data) => {
+      if (active) setResult({ data, path })
     }).catch((reason: Error) => {
       if (active) setError(reason)
     }).finally(() => {
@@ -54,7 +54,7 @@ export function useQuery<T>(path: string | null, timeoutMs?: number) {
     return () => { active = false }
   }, [path, count, timeoutMs])
 
-  return { data, error, loading, reload }
+  return { data: result?.data, dataPath: result?.path, error, loading, reload }
 }
 
 export function params(values: Record<string, string | number | boolean | undefined>) {

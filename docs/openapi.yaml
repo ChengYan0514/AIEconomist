@@ -553,10 +553,16 @@ paths:
     parameters: [{$ref: '#/components/parameters/JobId'}]
     get:
       operationId: listJobItems
-      parameters: [{$ref: '#/components/parameters/Page'}, {$ref: '#/components/parameters/Size'}]
+      parameters:
+        - {$ref: '#/components/parameters/Page'}
+        - {$ref: '#/components/parameters/Size'}
+        - name: state
+          in: query
+          description: 按 JobItemState 中的状态精确筛选，省略或传空字符串时返回所有状态。其他非空值返回空列表。
+          schema: {type: string}
       responses:
         '200':
-          description: 操作对象的逐项结果
+          description: 按 sequence 排序的任务项。先筛选再分页，total 为符合筛选条件的任务项总数。任务摘要始终统计整个任务。
           content:
             application/json:
               schema:
@@ -567,14 +573,17 @@ paths:
                         type: array
                         items: {$ref: '#/components/schemas/JobItem'}
         '400': {$ref: '#/components/responses/Error'}
+        '403': {$ref: '#/components/responses/Error'}
         '404': {$ref: '#/components/responses/Error'}
   /jobs/{jobId}/retry:
     parameters: [{$ref: '#/components/parameters/JobId'}]
     post:
       operationId: retryJob
+      description: 重试原任务中所有符合条件的失败项。返回的新任务通过 retryOf 指向原任务。
       responses:
         '202': {$ref: '#/components/responses/Job'}
         '400': {$ref: '#/components/responses/Error'}
+        '403': {$ref: '#/components/responses/Error'}
         '404': {$ref: '#/components/responses/Error'}
         '409': {$ref: '#/components/responses/Error'}
 components:
@@ -777,9 +786,12 @@ components:
     JobState:
       type: string
       enum: [READY, QUEUED, RUNNING, SUCCEEDED, FAILED, PARTIAL]
+    JobItemState:
+      type: string
+      enum: [READY, QUEUED, RUNNING, SUCCEEDED, SKIPPED, FAILED]
     Job:
       type: object
-      required: [jobId, kind, state, total, ready, queued, running, succeeded, skipped, failed, username, retryOf, createdAt, finishedAt, confirmedAt, scope]
+      required: [jobId, kind, state, total, ready, queued, running, succeeded, skipped, failed, canRetry, username, retryOf, createdAt, finishedAt, confirmedAt, scope]
       properties:
         jobId: {type: string, format: uuid}
         kind: {$ref: '#/components/schemas/JobKind'}
@@ -791,6 +803,7 @@ components:
         succeeded: {type: integer}
         skipped: {type: integer}
         failed: {type: integer}
+        canRetry: {type: boolean, description: 任务已完成且有可重试的失败项。调用者还需要任务对应的执行权限。}
         username: {type: string}
         retryOf: {type: [string, 'null'], format: uuid}
         createdAt: {type: string, format: date-time}
@@ -799,11 +812,12 @@ components:
         scope: {type: object, description: 来源范围、所选论文数量 selectedCount，或 ZIP 文件名 filename}
     JobItem:
       type: object
-      required: [sequence, target, paperId, state, message, result]
+      required: [sequence, target, paperId, state, inputError, message, result]
       properties:
         sequence: {type: integer}
         target: {type: string}
         paperId: {type: [string, 'null']}
-        state: {type: string, enum: [READY, QUEUED, RUNNING, SUCCEEDED, SKIPPED, FAILED]}
+        state: {$ref: '#/components/schemas/JobItemState'}
+        inputError: {type: boolean, description: 此项在 ZIP 预检阶段失败，需要修正后重新上传。}
         message: {type: [string, 'null']}
         result: {type: [object, 'null']}
