@@ -5,7 +5,7 @@ import type { JobKind, JobState, PaperStatus, Source } from "../types"
 import { Button } from "./ui/button"
 
 const paperLabels: Record<PaperStatus, [string, string]> = {
-  PUBLISHED: ["已发布", "green"], READY: ["待导入全文", "blue"], UNPROCESSED: ["待解析", "neutral"],
+  PUBLISHED: ["已发布全文", "green"], READY: ["待导入全文", "green"], UNPROCESSED: ["待解析", "neutral"],
   FAILED: ["处理失败", "red"], UNSUPPORTED: ["格式暂不支持解析", "neutral"],
 }
 

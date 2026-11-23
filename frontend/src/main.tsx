@@ -12,7 +12,7 @@ import "./styles.css"
 
 function App() {
   const session = useQuery<{ username: string }>("/session")
-  if (session.loading && !session.data) return <div className="boot-screen"><Loading label="正在打开 Paperflow…" /></div>
+  if (session.loading && !session.data) return <div className="boot-screen"><Loading label="正在打开 AI Economist…" /></div>
   if (!session.data) {
     const showError = session.error && (!(session.error instanceof ApiError) || session.error.status !== 401)
     return <Login serviceError={showError ? session.error?.message : undefined} />

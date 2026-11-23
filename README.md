@@ -54,3 +54,12 @@ npm --prefix frontend run build
 ```
 
 为 `PAPERFLOW_TEST_JDBC_URL` 提供独立 PostgreSQL 测试库可启用端到端测试。测试角色需能创建两个测试 schema，账号和密码用 `PAPERFLOW_TEST_DB_USER`、`PAPERFLOW_TEST_DB_PASSWORD` 配置。测试内启动 MinerU 测试服务，覆盖解析失败、重试和全文发布。
+
+浏览器验收需要运行前端和连接独立测试库的后端。论文工作区用例使用 `backend/src/test/resources/legacy.sql` 中的历史数据，测试存储中留空 `original/legacy.pdf`。将 `AIE_BROWSER_USER` 和 `AIE_BROWSER_PASSWORD` 设为测试账号凭证，`AIE_BROWSER_URL` 默认为 `http://127.0.0.1:5173`。
+
+```bash
+npm --prefix frontend exec -- playwright-core install chromium
+npm --prefix frontend run test:browser
+```
+
+也可通过 `CHROMIUM_EXECUTABLE_PATH` 指定已安装的 Chromium。
