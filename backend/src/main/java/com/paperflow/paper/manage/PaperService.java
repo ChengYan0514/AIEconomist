@@ -46,8 +46,8 @@ public final class PaperService {
         return papers.count(filter);
     }
 
-    public void export(PaperFilter filter, Consumer<Paper> output) {
-        transactions.executeWithoutResult(status -> papers.export(filter, output));
+    public long export(PaperFilter filter, Consumer<Paper> output) {
+        return transactions.execute(status -> papers.export(filter, output));
     }
 
     public List<String> range(String sourceId, Integer yearFrom, Integer yearTo, int limit) {

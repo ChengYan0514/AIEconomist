@@ -1,0 +1,52 @@
+const assert = require("node:assert/strict")
+const { readFile } = require("node:fs/promises")
+const { test } = require("node:test")
+const { login, withBrowser } = require("./browser.cjs")
+
+test("系统管理员从筛选后的 CSV 下载查阅审计事件", () => withBrowser(async (browser, url) => {
+  const page = await browser.newPage({ acceptDownloads: true })
+  await page.goto(url + "/papers")
+  await login(page)
+  await page.getByLabel("搜索论文").fill("legacy-001")
+  await page.getByRole("button", { name: "查询", exact: true }).click()
+  await page.getByRole("link", { name: "Legacy paper", exact: true }).waitFor()
+  const [download] = await Promise.all([
+    page.waitForEvent("download"),
+    page.getByRole("link", { name: "导出 CSV", exact: true }).click(),
+  ])
+  assert.equal(download.suggestedFilename(), "paperflow-papers.csv")
+  const content = await readFile(await download.path(), "utf8")
+  assert.match(content, /legacy-001,S123,2024,Legacy paper/)
+  assert.match(download.url(), /q=legacy-001/)
+  for (let index = 0; index < 20; index++) {
+    const next = await page.request.get(url + "/api/papers/export")
+    assert.equal(next.status(), 200)
+  }
+
+  await page.getByRole("navigation").getByRole("link", { name: "审计日志" }).click({ timeout: 5000 })
+  await page.getByRole("heading", { name: "审计日志", exact: true }).waitFor()
+  await page.getByLabel("操作者", { exact: true }).fill(process.env.AIE_BROWSER_USER)
+  await page.getByLabel("动作", { exact: true }).selectOption("PAPER_CSV_EXPORT")
+  await page.getByLabel("结果", { exact: true }).selectOption("SUCCEEDED")
+  await page.getByRole("button", { name: "查询", exact: true }).click()
+  await page.getByRole("button", { name: "下一页" }).click()
+  await page.getByText("第 2 / 2 页", { exact: false }).waitFor()
+  await page.getByRole("button", { name: "论文 CSV 导出", exact: true }).click()
+  const detail = page.getByRole("region", { name: "事件详情" })
+  await detail.getByText("变更摘要").waitFor()
+  assert.match(await detail.innerText(), /导出行数\s+1/)
+  assert.match(await detail.innerText(), /应用了搜索词\s+是/)
+  assert.doesNotMatch(await detail.innerText(), /legacy-001|Legacy paper/)
+  await detail.getByRole("button", { name: "关闭事件详情" }).click()
+  assert.equal(await page.getByLabel("操作者", { exact: true }).inputValue(), process.env.AIE_BROWSER_USER)
+  assert.equal(await page.getByLabel("动作", { exact: true }).inputValue(), "PAPER_CSV_EXPORT")
+  assert.equal(await page.getByLabel("结果", { exact: true }).inputValue(), "SUCCEEDED")
+  await page.getByText("第 2 / 2 页", { exact: false }).waitFor()
+
+  await page.setViewportSize({ width: 390, height: 844 })
+  await page.getByRole("button", { name: "论文 CSV 导出", exact: true }).click()
+  await detail.getByText("变更摘要").waitFor()
+  assert.equal(await page.evaluate(() => document.documentElement.scrollWidth), 390)
+  await detail.getByRole("link", { name: "查看论文库" }).click()
+  await page.getByRole("heading", { name: "论文库", exact: true }).waitFor()
+}))

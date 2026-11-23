@@ -155,6 +155,17 @@ S123,2024,Example paper,Alice;Bob,files/paper.pdf
 
 唯一候选可自动关联，多候选项会以 `SKIPPED` 返回，`result.candidates` 列出可选作品，`result.matched` 为 `false`。手动确认前重新读取论文取得当前 `version`，再用候选的 `workId` 提交确认。服务端按当前论文复核候选。成功后可从论文的 `matchedWorkId` 核对结果。
 
+## 审计日志
+
+| 方法和路径 | 请求 | 成功响应 |
+| --- | --- | --- |
+| `GET /api/audit-events` | 可选 `from`、`to`、`actor`、`action`、`objectType`、`objectId`、`outcome`、`page`、`size` | `200`，审计事件分页 |
+| `GET /api/audit-events/{eventId}` | 审计事件 ID | `200`，同一事件及 `summary` |
+
+仅系统管理员可读取。时间按 ISO 8601 含时区格式填写，起止边界均包含。标识按去除首尾空白后的值精确匹配。所有筛选条件同时生效。时间相同时按事件 ID 倒序。每个事件包含 `eventId`、`occurredAt`、`actor`、`action`、`objectType`、`objectId` 和 `outcome`。
+
+论文 CSV 导出的动作是 `PAPER_CSV_EXPORT`，对象是 `PAPER_COLLECTION` 类型的 `papers`。服务器完成 CSV 写入与刷新后记录 `SUCCEEDED`，摘要包含导出行数、是否使用搜索词、归档视图以及已应用的来源 ID、年份范围和处理状态。请求字段无效或写入中断时记录 `FAILED`，摘要只包含错误代码。未登录的请求返回 `401`。审计摘要排除原始搜索词、正文、CSV 内容、密码、密钥和会话标识。
+
 ## 错误处理
 
 应用错误返回 `{code, message}`。用 HTTP 状态和 `code` 决定恢复方式，`message` 可展示给管理员。异步工作返回 `202` 后，其执行错误通过任务项的 `state` 和 `message` 读取。
@@ -164,7 +175,7 @@ S123,2024,Example paper,Alice;Bob,files/paper.pdf
 | `400` | `INVALID_INPUT` | 字段、分页、文件格式或范围无效，也涵盖应用层单文件 100 MiB 上限 |
 | `401` | `AUTH_REQUIRED`、`INVALID_LOGIN` | 需要管理员会话，或登录凭据有误 |
 | `403` | `ACCESS_DENIED` | 请求校验失败。写请求可检查 Cookie 和 CSRF |
-| `404` | `PAPER_NOT_FOUND`、`JOB_NOT_FOUND`、`FILE_MISSING` | 论文、任务或文件不可读取 |
+| `404` | `PAPER_NOT_FOUND`、`JOB_NOT_FOUND`、`FILE_MISSING`、`AUDIT_EVENT_NOT_FOUND` | 论文、任务、文件或审计事件不可读取 |
 | `409` | `PAPER_CHANGED`、`PAPER_ARCHIVED`、`DUPLICATE_PAPER`、`JOB_CONFLICT`、`CANDIDATE_MISSING`、`WORK_ALREADY_BOUND`、`CONCURRENT_CHANGE` | 版本冲突、业务状态冲突或并发更新 |
 | `413` | `FILE_TOO_LARGE` | 超过 multipart 请求配置上限，单上传文件 256 MiB，请求体 257 MiB |
 | `500` | `INTERNAL` | 服务暂时无法完成操作 |

@@ -59,11 +59,15 @@ class SecurityConfiguration {
     SecurityFilterChain security(
             HttpSecurity http, ObjectMapper json, HttpSessionSecurityContextRepository context
     ) throws Exception {
+        String[] auditPaths = {"/api/audit-events", "/api/audit-events/**"};
         return http
                 .authorizeHttpRequests(rules -> rules
                         .requestMatchers(HttpMethod.GET, "/api/csrf").permitAll()
                         .requestMatchers(HttpMethod.POST, "/api/session").permitAll()
                         .requestMatchers("/error").permitAll()
+                        .requestMatchers(HttpMethod.GET, auditPaths).hasRole("ADMIN")
+                        .requestMatchers(HttpMethod.HEAD, auditPaths).hasRole("ADMIN")
+                        .requestMatchers(auditPaths).denyAll()
                         .anyRequest().authenticated())
                 .securityContext(config -> config.securityContextRepository(context))
                 .csrf(config -> config.csrfTokenRepository(new HttpSessionCsrfTokenRepository()))

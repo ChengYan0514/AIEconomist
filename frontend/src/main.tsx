@@ -1,6 +1,7 @@
 import { StrictMode } from "react"
 import { createRoot } from "react-dom/client"
 import { api, ApiError, useQuery } from "./api"
+import { AuditLog } from "./audit"
 import { Empty, Loading } from "./components/shared"
 import { Workspace } from "./components/workspace"
 import { Login } from "./login"
@@ -25,7 +26,8 @@ function App() {
   }
   const page = section === "papers" ? id ? <PaperDetail id={decodeURIComponent(id)} /> : <Library /> :
     section === "jobs" ? id ? <JobDetail id={decodeURIComponent(id)} /> : <Jobs /> :
-    section === "openalex" ? <OpenAlex /> : <Empty title="找不到此页面"><a href="/papers" className="inline-link">返回论文库</a></Empty>
+    section === "openalex" ? <OpenAlex /> :
+    section === "audit" && !id ? <AuditLog /> : <Empty title="找不到此页面"><a href="/papers" className="inline-link">返回论文库</a></Empty>
   return <Workspace page={path} username={session.data.username} logout={logout}>{page}</Workspace>
 }
 

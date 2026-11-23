@@ -1,4 +1,4 @@
-import { BookOpen, ChevronDown, Database, FileText, LogOut, Menu, ShieldCheck, Upload, UserRound, X } from "lucide-react"
+import { BookOpen, ChevronDown, ClipboardList, Database, FileText, LogOut, Menu, ShieldCheck, Upload, UserRound, X } from "lucide-react"
 import { useState, type FormEvent, type ReactNode } from "react"
 import { api, errorMessage } from "../api"
 import { Modal, Notice } from "./shared"
@@ -17,6 +17,9 @@ const navigation = [{
     { path: "/jobs", label: "导入与处理", icon: Upload },
     { path: "/openalex", label: "OpenAlex", icon: Database },
   ],
+}, {
+  label: "系统管理",
+  items: [{ path: "/audit", label: "审计日志", icon: ClipboardList }],
 }]
 
 export function Workspace({ page, username, children, logout }:

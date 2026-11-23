@@ -38,18 +38,7 @@ class WorkspaceTest {
 
     @DynamicPropertySource
     static void configuration(DynamicPropertyRegistry properties) {
-        fixture = new WorkspaceFixture();
-        properties.add("spring.datasource.url", fixture::jdbcUrl);
-        properties.add("spring.datasource.username", fixture::user);
-        properties.add("spring.datasource.password", fixture::password);
-        properties.add("paperflow.openalex-schema", fixture::snapshot);
-        properties.add("paperflow.storage", fixture::storage);
-        properties.add("paperflow.legacy-storage", fixture::legacy);
-        properties.add("paperflow.mineru-url", fixture::mineru);
-        properties.add("paperflow.mineru-timeout", () -> "PT5S");
-        properties.add("paperflow.admin-username", () -> "integration");
-        properties.add("paperflow.admin-password", () -> "workspace-test-password");
-        properties.add("paperflow.job-delay", () -> 30);
+        fixture = WorkspaceFixture.configure(properties);
     }
 
     @AfterAll static void stop() { if (fixture != null) fixture.close(); }

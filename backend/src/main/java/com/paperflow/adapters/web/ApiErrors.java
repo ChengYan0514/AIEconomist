@@ -1,5 +1,6 @@
 package com.paperflow.adapters.web;
 
+import com.paperflow.audit.model.AuditEventNotFound;
 import com.paperflow.job.JobConflict;
 import com.paperflow.job.JobNotFound;
 import com.paperflow.paper.model.PaperConflict;
@@ -33,6 +34,11 @@ public class ApiErrors {
     @ExceptionHandler(JobNotFound.class)
     public ResponseEntity<Error> jobNotFound(JobNotFound error) {
         return response(HttpStatus.NOT_FOUND, "JOB_NOT_FOUND", error.getMessage());
+    }
+
+    @ExceptionHandler(AuditEventNotFound.class)
+    public ResponseEntity<Error> auditEventNotFound(AuditEventNotFound error) {
+        return response(HttpStatus.NOT_FOUND, "AUDIT_EVENT_NOT_FOUND", error.getMessage());
     }
 
     @ExceptionHandler(NoSuchFileException.class)

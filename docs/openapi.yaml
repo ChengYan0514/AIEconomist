@@ -114,15 +114,16 @@ paths:
         '409': {$ref: '#/components/responses/Error'}
         '413': {$ref: '#/components/responses/Error'}
   /papers/export:
+    parameters:
+      - {name: q, in: query, schema: {type: string, maxLength: 200}}
+      - {name: sourceId, in: query, schema: {type: string}}
+      - {name: yearFrom, in: query, schema: {type: integer, minimum: 1000, maximum: 9999}}
+      - {name: yearTo, in: query, schema: {type: integer, minimum: 1000, maximum: 9999}}
+      - {name: status, in: query, schema: {$ref: '#/components/schemas/PaperStatus'}}
+      - {name: archived, in: query, schema: {type: boolean, default: false}}
     get:
       operationId: exportPapers
-      parameters:
-        - {name: q, in: query, schema: {type: string, maxLength: 200}}
-        - {name: sourceId, in: query, schema: {type: string}}
-        - {name: yearFrom, in: query, schema: {type: integer, minimum: 1000, maximum: 9999}}
-        - {name: yearTo, in: query, schema: {type: integer, minimum: 1000, maximum: 9999}}
-        - {name: status, in: query, schema: {$ref: '#/components/schemas/PaperStatus'}}
-        - {name: archived, in: query, schema: {type: boolean, default: false}}
+      description: 服务器完成 CSV 写入和刷新后记录成功事件。已登录的无效请求和导出异常记录为失败，未登录请求返回 401。
       responses:
         '200':
           description: 导出全部命中行的 UTF-8 CSV
@@ -130,6 +131,67 @@ paths:
             text/csv:
               schema: {type: string, format: binary}
         '400': {$ref: '#/components/responses/Error'}
+        '401': {$ref: '#/components/responses/Error'}
+    head:
+      operationId: getPaperExportHeaders
+      description: 检查导出响应头。
+      responses:
+        '200': {description: CSV 响应头}
+        '400': {$ref: '#/components/responses/Error'}
+        '401': {$ref: '#/components/responses/Error'}
+  /audit-events:
+    get:
+      operationId: listAuditEvents
+      description: 仅系统管理员可用。所有条件同时匹配，时间边界包含在内，结果按时间及事件 ID 倒序。
+      parameters:
+        - {name: from, in: query, schema: {type: string, format: date-time}}
+        - {name: to, in: query, schema: {type: string, format: date-time}}
+        - {name: actor, in: query, schema: {type: string, maxLength: 50}}
+        - {name: action, in: query, schema: {type: string, maxLength: 64}}
+        - {name: objectType, in: query, schema: {type: string, maxLength: 64}}
+        - {name: objectId, in: query, schema: {type: string, maxLength: 255}}
+        - {name: outcome, in: query, schema: {$ref: '#/components/schemas/AuditOutcome'}}
+        - {$ref: '#/components/parameters/Page'}
+        - {$ref: '#/components/parameters/Size'}
+      responses:
+        '200':
+          description: 审计事件分页，标识筛选采用精确匹配
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - {$ref: '#/components/schemas/Page'}
+                  - properties:
+                      items:
+                        type: array
+                        items: {$ref: '#/components/schemas/AuditEvent'}
+        '400': {$ref: '#/components/responses/Error'}
+        '401': {$ref: '#/components/responses/Error'}
+        '403': {$ref: '#/components/responses/Error'}
+  /audit-events/{eventId}:
+    get:
+      operationId: getAuditEvent
+      description: 仅系统管理员可用。
+      parameters:
+        - {name: eventId, in: path, required: true, schema: {type: integer, format: int64, minimum: 1}}
+      responses:
+        '200':
+          description: 审计事件详情
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - {$ref: '#/components/schemas/AuditEvent'}
+                  - required: [summary]
+                    properties:
+                      summary:
+                        type: object
+                        description: 按动作提供有限摘要。CSV 成功事件仅包括导出行数、是否使用搜索、来源 ID、年份范围、处理状态及归档视图。失败事件仅保留错误代码。
+                        additionalProperties: {type: [string, integer, boolean]}
+        '400': {$ref: '#/components/responses/Error'}
+        '401': {$ref: '#/components/responses/Error'}
+        '403': {$ref: '#/components/responses/Error'}
+        '404': {$ref: '#/components/responses/Error'}
   /papers/{paperId}:
     parameters: [{$ref: '#/components/parameters/PaperId'}]
     get:
@@ -438,6 +500,20 @@ components:
         page: {type: integer}
         size: {type: integer}
         total: {type: integer, format: int64}
+    AuditOutcome:
+      type: string
+      enum: [SUCCEEDED, FAILED, DENIED]
+    AuditEvent:
+      type: object
+      required: [eventId, occurredAt, actor, action, objectType, objectId, outcome]
+      properties:
+        eventId: {type: integer, format: int64}
+        occurredAt: {type: string, format: date-time}
+        actor: {type: string}
+        action: {type: string, description: CSV 导出为 PAPER_CSV_EXPORT}
+        objectType: {type: string, description: CSV 导出的对象类型为 PAPER_COLLECTION}
+        objectId: {type: string, description: CSV 导出的对象 ID 为 papers}
+        outcome: {$ref: '#/components/schemas/AuditOutcome'}
     Metadata:
       type: object
       required: [sourceId, year, title, authors]

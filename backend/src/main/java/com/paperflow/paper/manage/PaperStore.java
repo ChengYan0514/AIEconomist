@@ -12,7 +12,7 @@ public interface PaperStore {
     Paper get(String id);
     List<Paper> getMany(List<String> ids);
     List<Paper> list(PaperFilter filter, long offset, int size);
-    void export(PaperFilter filter, Consumer<Paper> output);
+    long export(PaperFilter filter, Consumer<Paper> output);
     long count(PaperFilter filter);
     List<IdentityRow> atSourceYear(String sourceId, int year);
     List<String> range(String sourceId, Integer yearFrom, Integer yearTo, int limit);

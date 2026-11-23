@@ -17,9 +17,14 @@ public interface PaperMapper extends PaperStore {
     long count(@Param("filter") PaperFilter filter);
 
     @Override
-    default void export(PaperFilter filter, Consumer<Paper> output) {
+    default long export(PaperFilter filter, Consumer<Paper> output) {
         try (var cursor = selectExport(filter)) {
-            cursor.forEach(output);
+            long rows = 0;
+            for (Paper paper : cursor) {
+                output.accept(paper);
+                rows++;
+            }
+            return rows;
         } catch (IOException error) {
             throw new UncheckedIOException(error);
         }

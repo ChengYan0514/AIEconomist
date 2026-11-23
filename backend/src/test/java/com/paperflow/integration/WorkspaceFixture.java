@@ -5,6 +5,7 @@ import com.sun.net.httpserver.HttpServer;
 import org.springframework.core.io.ClassPathResource;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.datasource.init.ScriptUtils;
+import org.springframework.test.context.DynamicPropertyRegistry;
 
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
@@ -44,6 +45,22 @@ final class WorkspaceFixture implements AutoCloseable {
         } catch (Exception error) {
             throw new IllegalStateException("Cannot prepare isolated Paperflow fixture", error);
         }
+    }
+
+    static WorkspaceFixture configure(DynamicPropertyRegistry properties) {
+        var fixture = new WorkspaceFixture();
+        properties.add("spring.datasource.url", fixture::jdbcUrl);
+        properties.add("spring.datasource.username", fixture::user);
+        properties.add("spring.datasource.password", fixture::password);
+        properties.add("paperflow.openalex-schema", fixture::snapshot);
+        properties.add("paperflow.storage", fixture::storage);
+        properties.add("paperflow.legacy-storage", fixture::legacy);
+        properties.add("paperflow.mineru-url", fixture::mineru);
+        properties.add("paperflow.mineru-timeout", () -> "PT5S");
+        properties.add("paperflow.admin-username", () -> "integration");
+        properties.add("paperflow.admin-password", () -> "workspace-test-password");
+        properties.add("paperflow.job-delay", () -> 30);
+        return fixture;
     }
 
     private void setupDatabase() throws Exception {

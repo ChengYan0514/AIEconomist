@@ -7,10 +7,10 @@
 | 对象范围 | 默认位置 | v2 的访问方式 |
 | --- | --- | --- |
 | v2 业务表及历史兼容对象 | PostgreSQL 数据库 `openalex` 的 `widi_chengyan` schema | JDBC 的 `currentSchema` 用于解析业务表、视图和旧表。`PAPERFLOW_JDBC_URL` 可覆盖整条连接，缺省时由 `PAPERFLOW_DB_HOST`、`PAPERFLOW_DB_PORT`、`PAPERFLOW_DB_NAME` 和 `PAPERFLOW_DB_SCHEMA` 组成。 |
-| v2 迁移历史 | 同一业务 schema 的 `v2_flyway_schema_history` | 由 Flyway 管理，记录版本、脚本、校验和及应用结果。已有非空 schema 可从版本 `0` 建立基线，随后执行 `V1__paperflow_v2.sql`。配置禁用创建 schema 和 `clean`。 |
+| v2 迁移历史 | 同一业务 schema 的 `v2_flyway_schema_history` | 由 Flyway 管理，记录版本、脚本、校验和及应用结果。已有非空 schema 可从版本 `0` 建立基线，随后执行 v2 迁移。配置禁用创建 schema 和 `clean`。 |
 | OpenAlex 快照 | 同一 JDBC 数据库的 `dataset_20241125` schema | SQL 带 schema 名执行 `SELECT`。`PAPERFLOW_OPENALEX_SCHEMA` 优先于 `OPENALEX_DB_SCHEMA`。配置校验 schema 名为小写 PostgreSQL 标识符。 |
 
-`V1` 创建七张业务表和 `v2_paper_read` 视图。业务写入集中在这七张表，旧库和快照通过 `SELECT` 访问。创建视图时，`source`、`original_file`、`original_file_job` 及视图使用的列必须已存在。历史文本和书目表在相关查询时访问。历史论文从兼容视图即时读取，首次写入时按篇登记。旧平台主库和因果库分别使用自己的 `flyway_schema_history` 和 `flyway_causal_schema_history`。 [数据库迁移](../backend/src/main/resources/db/migration/V1__paperflow_v2.sql) · [配置校验](../backend/src/main/java/com/paperflow/main/WorkspaceProperties.java)
+`V1` 创建七张业务表和 `v2_paper_read` 视图。`V2` 增加审计事件表。旧库和快照通过 `SELECT` 访问。创建视图时，`source`、`original_file`、`original_file_job` 及视图使用的列必须已存在。历史文本和书目表在相关查询时访问。历史论文从兼容视图即时读取，首次写入时按篇登记。旧平台主库和因果库分别使用自己的 `flyway_schema_history` 和 `flyway_causal_schema_history`。 [数据库迁移](../backend/src/main/resources/db/migration/V1__paperflow_v2.sql) · [配置校验](../backend/src/main/java/com/paperflow/main/WorkspaceProperties.java)
 
 ## v2 表结构
 
@@ -25,6 +25,20 @@
 | `created_at` | `timestamptz`，必填，默认 `now()` | 账号登记时间。 |
 
 启动时可由 `PAPERFLOW_ADMIN_USERNAME` 和 `PAPERFLOW_ADMIN_PASSWORD` 创建指定的缺失账号。登录和密码修改使用本表。管理会话由 Spring Security 的 HTTP 会话保存。 [账号查询](../backend/src/main/java/com/paperflow/adapters/persistence/AdminMapper.java) · [安全配置](../backend/src/main/java/com/paperflow/main/SecurityConfiguration.java)
+
+### `v2_audit_event`
+
+| 列 | 类型与约束 | 用途 |
+| --- | --- | --- |
+| `event_id` | `bigint`，自增主键 | 审计事件 ID。 |
+| `occurred_at` | `timestamptz`，必填，默认为数据库的当前时间 | 操作结果的记录时间。 |
+| `actor` | `varchar(50)`，必填 | 事件发生时的操作者用户名。 |
+| `action` | `varchar(64)`，必填 | 操作代码。 |
+| `object_type`、`object_id` | `varchar(64)`、`varchar(255)`，必填 | 操作对象的类型和稳定标识。 |
+| `outcome` | `varchar(16)`，必填 | `SUCCEEDED`、`FAILED` 或 `DENIED`。 |
+| `summary` | `jsonb` 对象，必填 | 根据动作选取的摘要字段。 |
+
+应用仅追加或读取事件。操作者与对象标识随事件保留，便于在关联对象变更后追溯。时间和事件 ID 的联合索引支持倒序分页。 [审计迁移](../backend/src/main/resources/db/migration/V2__audit_events.sql)
 
 ### `v2_paper`
 

@@ -251,6 +251,27 @@ input[type="checkbox"] { accent-color: var(--accent); width: 15px; height: 15px;
 .source-search { display: flex; gap: 9px; padding: 13px 17px; border-bottom: 1px solid var(--line); }
 .source-search .search-box { flex: 1; }
 
+.audit-filters { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 164px), 1fr)); gap: 12px; align-items: end; margin-bottom: 20px; }
+.audit-filters label { min-width: 0; display: grid; gap: 5px; font-size: .84rem; font-weight: 620; }
+.audit-filters .field { font-weight: 440; }
+.audit-filter-actions { display: flex; flex-wrap: wrap; gap: 6px; }
+.audit-layout { display: grid; gap: 12px; align-items: start; }
+.audit-layout[data-event-open="true"] { grid-template-columns: minmax(0, 1.5fr) minmax(0, 1fr); }
+.audit-table { min-width: 540px; }
+.audit-table td { overflow-wrap: anywhere; }
+.audit-event-button { text-align: left; }
+.audit-detail { padding: 16px 19px; }
+.audit-detail-heading { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.audit-detail h2 { margin: 0; font-size: 1.18rem; font-weight: 700; }
+.audit-detail h3 { margin: 0; padding-top: 15px; border-top: 1px solid var(--line); font-weight: 670; }
+.audit-detail dl { display: grid; grid-template-columns: minmax(78px, 1fr) minmax(0, 2fr); gap: 10px; padding-block: 12px; margin: 0; font-size: .875rem; }
+.audit-detail dt { color: var(--muted); }
+.audit-detail dd { margin: 0; overflow-wrap: anywhere; }
+.audit-detail-link { border-top: 1px solid var(--line); padding-top: 12px; }
+@media (max-width: 1100px) {
+  .audit-layout[data-event-open="true"] { grid-template-columns: minmax(0, 1fr); }
+}
+
 .login-page { min-height: 100dvh; display: grid; place-items: center; padding: 24px 16px; }
 .login-card { width: min(100%, 424px); padding: clamp(22px, 5vw, 32px); }
 .login-card h1 { margin: 24px 0 17px; font-size: 1.65rem; font-weight: 700; letter-spacing: -.025em; }
