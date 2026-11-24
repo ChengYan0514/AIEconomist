@@ -12,7 +12,7 @@ import java.util.concurrent.TimeoutException;
 public final class SystemStatus implements AutoCloseable {
     public static final Duration CHECK_TIMEOUT = Duration.ofSeconds(2);
 
-    public enum Dependency { POSTGRESQL, MINERU, CURRENT_STORAGE, LEGACY_STORAGE, OPENALEX_SNAPSHOT }
+    public enum Dependency { POSTGRESQL, MINERU, CURRENT_STORAGE, LEGACY_STORAGE, OPENALEX_SNAPSHOT, CAUSAL_DATABASE, CAUSAL_ENGINE }
     public enum State { HEALTHY, UNAVAILABLE, NOT_CHECKED }
 
     @FunctionalInterface
@@ -20,9 +20,16 @@ public final class SystemStatus implements AutoCloseable {
         void run() throws Exception;
     }
 
-    public record Probe(Dependency dependency, Check check, String success, String failure, String timeout) {}
+    public record Probe(Dependency dependency, Check check, String success, String failure, String timeout, boolean enabled, String disabledMessage) {
+        public Probe(Dependency dependency, Check check, String success, String failure, String timeout) {
+            this(dependency, check, success, failure, timeout, true, "");
+        }
+    }
     public record Result(Dependency dependency, State state, Instant checkedAt, String message) {}
-    public record Configuration(String version, long maxOriginalBytes, long maxZipBytes, int maxJobTargets) {}
+    public record Configuration(
+            String version, long maxOriginalBytes, long maxZipBytes, int maxJobTargets,
+            boolean causalEnabled, String causalDefaultMode, int causalMaxBatchTargets
+    ) {}
     public record Report(List<Result> checks, Configuration configuration) {}
 
     private final ExecutorService executor;
@@ -76,6 +83,9 @@ public final class SystemStatus implements AutoCloseable {
         }
 
         private Result inspect() {
+            if (!probe.enabled()) {
+                return new Result(probe.dependency(), State.NOT_CHECKED, null, probe.disabledMessage());
+            }
             try {
                 probe.check().run();
                 return result(State.HEALTHY, probe.success());

@@ -3,6 +3,9 @@ package com.paperflow.adapters.web;
 import com.paperflow.account.model.UserManagementException;
 import com.paperflow.account.model.RoleManagementException;
 import com.paperflow.audit.model.AuditEventNotFound;
+import com.paperflow.causal.model.CausalConflict;
+import com.paperflow.causal.model.CausalNotFound;
+import com.paperflow.causal.model.CausalUnavailable;
 import com.paperflow.job.JobConflict;
 import com.paperflow.job.JobNotFound;
 import com.paperflow.paper.journal.JournalNotFound;
@@ -66,6 +69,21 @@ public class ApiErrors {
     @ExceptionHandler(AuditEventNotFound.class)
     public ResponseEntity<Error> auditEventNotFound(AuditEventNotFound error) {
         return response(HttpStatus.NOT_FOUND, "AUDIT_EVENT_NOT_FOUND", error.getMessage());
+    }
+
+    @ExceptionHandler(CausalNotFound.class)
+    public ResponseEntity<Error> causalNotFound(CausalNotFound error) {
+        return response(HttpStatus.NOT_FOUND, error.code(), error.getMessage());
+    }
+
+    @ExceptionHandler(CausalConflict.class)
+    public ResponseEntity<Error> causalConflict(CausalConflict error) {
+        return response(HttpStatus.CONFLICT, error.code(), error.getMessage());
+    }
+
+    @ExceptionHandler(CausalUnavailable.class)
+    public ResponseEntity<Error> causalUnavailable(CausalUnavailable error) {
+        return response(HttpStatus.SERVICE_UNAVAILABLE, error.code(), error.getMessage());
     }
 
     @ExceptionHandler(NoSuchFileException.class)

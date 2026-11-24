@@ -1,9 +1,10 @@
 import {
   Archive, ArrowRight, ArrowUpRight, BookMarked, Database, ExternalLink,
-  LayoutGrid, List, Search, Workflow,
+  LayoutGrid, List, Search, Sparkles, Workflow,
 } from "lucide-react"
 import { useEffect, useState, type FormEvent } from "react"
 import { dateLabel, params, useQuery } from "./api"
+import { extractionEntryHref } from "./causal/types"
 import { Drawer } from "./components/drawer"
 import { Empty, Loading, Notice, Pagination } from "./components/shared"
 import { Button } from "./components/ui/button"
@@ -271,7 +272,7 @@ export function PipelineBar({ journal }: { journal: Pick<JournalSummary, "totalP
 }
 
 function JournalDrawer({ sourceId, onClose }: { sourceId: string; onClose: () => void }) {
-  const { canJob, canProcess } = usePermissions()
+  const { can, canJob, canProcess } = usePermissions()
   const [processing, setProcessing] = useState(false)
   const result = useQuery<JournalDetail>("/journals/" + encodeURIComponent(sourceId))
   const detail = result.data
@@ -293,6 +294,11 @@ function JournalDrawer({ sourceId, onClose }: { sourceId: string; onClose: () =>
         {canJob("METADATA") && <Button asChild variant="outline">
           <a href={"/openalex" + params({ sourceId: journal.sourceId })} onClick={onClose}>
             <Database size={15} aria-hidden="true" />同步 OpenAlex
+          </a>
+        </Button>}
+        {can("CAUSAL_EXTRACT") && <Button asChild variant="outline">
+          <a href={extractionEntryHref({ mode: "SOURCE_IDS", sourceId: journal.sourceId })} onClick={onClose}>
+            <Sparkles size={15} aria-hidden="true" />发起因果抽取
           </a>
         </Button>}
       </div>}

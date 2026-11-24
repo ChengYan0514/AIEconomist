@@ -24,6 +24,15 @@
                ), '') AS authors
         FROM selected s ORDER BY s.id
     </select>
+    <select id="snapshotWorkTopics" resultType="com.paperflow.openalex.WorkTopic">
+        SELECT DISTINCT wt.work_id, wt.topic_id, t.display_name AS topic_name,
+               t.field_display_name AS field_name, t.subfield_display_name AS subfield_name,
+               t.domain_display_name AS domain_name
+        FROM ${schema}.works_topics wt JOIN ${schema}.topics t ON t.id = wt.topic_id
+        WHERE wt.work_id IN
+        <foreach collection="workIds" item="id" open="(" separator="," close=")">#{id}</foreach>
+        ORDER BY wt.work_id, wt.topic_id
+    </select>
     <select id="lockSource" resultType="boolean">
         SELECT true FROM pg_advisory_xact_lock(hashtext(current_schema() || ':openalex'), hashtext(#{sourceId}))
     </select>
@@ -34,6 +43,15 @@
         </foreach>
         ON CONFLICT (source_id, work_id) DO UPDATE SET year = EXCLUDED.year, title = EXCLUDED.title,
             doi = EXCLUDED.doi, authors = EXCLUDED.authors, imported_at = now()
+    </insert>
+    <insert id="saveTopics">
+        INSERT INTO v2_openalex_work_topic (work_id, topic_id, topic_name, field_name, subfield_name, domain_name)
+        VALUES <foreach collection="topics" item="t" separator=",">
+            (#{t.workId}, #{t.topicId}, #{t.topicName}, #{t.fieldName}, #{t.subfieldName}, #{t.domainName})
+        </foreach>
+        ON CONFLICT (work_id, topic_id) DO UPDATE SET topic_name = EXCLUDED.topic_name,
+            field_name = EXCLUDED.field_name, subfield_name = EXCLUDED.subfield_name,
+            domain_name = EXCLUDED.domain_name, imported_at = now()
     </insert>
     <sql id="legacyProjection">
         SELECT w.work_id, w.publication_year AS year, w.title, w.doi,

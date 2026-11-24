@@ -28,3 +28,28 @@ services:
       timeout: 5s
       start_period: 120s
       retries: 6
+
+  causal-engine:
+    build: ./causal-engine
+    profiles: ["causal"]
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:${PAPERFLOW_CAUSAL_ENGINE_PORT:-18003}:18003"
+    environment:
+      CAUSAL_ENGINE_WORK_DIR: /data/causal-engine
+      CAUSAL_PROFILE_VERSION: ${PAPERFLOW_CAUSAL_PROFILE_VERSION:-1}
+      CAUSAL_MAX_CALLS: ${PAPERFLOW_CAUSAL_MAX_CALLS:-2000}
+      CAUSAL_CHAT_BASE_URL: ${CAUSAL_CHAT_BASE_URL:-}
+      CAUSAL_CHAT_MODEL: ${CAUSAL_CHAT_MODEL:-}
+      CAUSAL_CHAT_API_KEY: ${CAUSAL_CHAT_API_KEY:-}
+      CAUSAL_EMBEDDING_BASE_URL: ${CAUSAL_EMBEDDING_BASE_URL:-}
+      CAUSAL_EMBEDDING_MODEL: ${CAUSAL_EMBEDDING_MODEL:-}
+      CAUSAL_EMBEDDING_API_KEY: ${CAUSAL_EMBEDDING_API_KEY:-}
+      CAUSAL_ENABLE_THINKING: ${CAUSAL_ENABLE_THINKING:-false}
+    volumes:
+      - ./var/causal-engine:/data/causal-engine
+    healthcheck:
+      test: ["CMD", "python3", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:18003/v1/health', timeout=2)"]
+      interval: 15s
+      timeout: 5s
+      retries: 5

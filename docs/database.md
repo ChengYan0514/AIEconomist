@@ -10,7 +10,7 @@
 | v2 迁移历史 | 同一业务 schema 的 `v2_flyway_schema_history` | 由 Flyway 管理，记录版本、脚本、校验和及应用结果。已有非空 schema 可从版本 `0` 建立基线，随后执行 v2 迁移。配置禁用创建 schema 和 `clean`。 |
 | OpenAlex 快照 | 同一 JDBC 数据库的 `dataset_20241125` schema | SQL 带 schema 名执行 `SELECT`。`PAPERFLOW_OPENALEX_SCHEMA` 优先于 `OPENALEX_DB_SCHEMA`。配置校验 schema 名为小写 PostgreSQL 标识符。 |
 
-`V1` 创建七张业务表和 `v2_paper_read` 视图。`V2` 增加审计事件表。`V3` 接续 v2 账号并增加用户资料、内置角色和凭据版本。`V4` 登记内置和自定义角色，并为现有单角色列加外键。旧库和快照通过 `SELECT` 访问。创建视图时，`source`、`original_file`、`original_file_job` 及视图使用的列必须已存在。历史文本和书目表在相关查询时访问。历史论文从兼容视图即时读取，首次写入时按篇登记。旧平台主库和因果库分别使用自己的 `flyway_schema_history` 和 `flyway_causal_schema_history`。 [数据库迁移](../backend/src/main/resources/db/migration/V1__paperflow_v2.sql) · [配置校验](../backend/src/main/java/com/paperflow/main/WorkspaceProperties.java)
+`V1` 创建七张业务表和 `v2_paper_read` 视图。`V2` 增加审计事件表。`V3` 接续 v2 账号并增加用户资料、内置角色和凭据版本。`V4` 登记内置和自定义角色，并为现有单角色列加外键。`V5` 增加论文处理记录索引。`V6` 扩展角色权限约束、增加 OpenAlex 主题表 `v2_openalex_work_topic`、极简因果抽取控制表 `v2_causal_batch` / `v2_causal_run` 及因果图谱持久化预聚合读模型 `v2_causal_edge_index` / `v2_causal_snapshot`。因果事实表与回执表按 [ADR 0002](adr/0002-causal-fact-write-boundary.md) 原地共享读写并支持可选 `CAUSAL_DB_*` 独立数据源。 [数据库迁移](../backend/src/main/resources/db/migration/V6__causal_workspace.sql) · [因果库迁移](../backend/src/main/resources/db/causal/V1__causal_facts_and_receipts.sql)
 
 ## v2 表结构
 
@@ -168,6 +168,18 @@
 ZIP 预检通过项从固定的 `input.entry` 读取预检时的原件路径。预检跳过和失败项继续使用 `input = '{}'`，并在终态 `result.preflightPath` 记录包内路径。接口在 `preflight` 中提供该路径，原有公开 `result` 保持其结构。旧任务如未记录路径则返回空值。
 
 `V5` 增加 `paper_id` 非空项的索引，供论文处理记录精确查询。ZIP 行只有成功登记后，或预检结果的 `result.paperId` 指向已登记论文时，才纳入对应的处理记录。 [处理记录索引](../backend/src/main/resources/db/migration/V5__paper_job_history.sql)
+
+### `v2_openalex_work_topic`
+
+存储随 v2 OpenAlex 元数据导入同步的作品学科子领域与主题（来自快照 `works_topics` 与 `topics`），主键 `(work_id, topic_id)`，图谱读侧与旧 `work_topic` 联合查询。
+
+### `v2_causal_batch` 与 `v2_causal_run`
+
+极简因果抽取控制表：`v2_causal_batch` 记录入库模式（`RAW` / `STANDARDIZED`）、目标范围、引擎配置快照与取消标记，不设 `created_by` 或租约心跳列（操作者由 `v2_audit_event` 统一记录）；`v2_causal_run` 记录单篇论文的 `paper_id`、`work_id`、`input_hash`、`engine_run_id`、阶段、指标与错误，部分唯一索引限制同一 `work_id` 同时最多一条活跃运行，且以 `run_id` 作为因果库 `causal_publication_receipt.publication_id` 幂等键。
+
+### `v2_causal_edge_index` 与 `v2_causal_snapshot`
+
+因果图谱与领域分析的持久化预聚合读模型：`v2_causal_edge_index` 按 `claim_id` 预聚合记录数、论文数、方法数、四向统计与学科子领域数组（配 `GIN` 索引与排序索引），`v2_causal_snapshot` 持久化保存按 `causal_dataset_revision` 键控的 `SUMMARY` / `DEFAULT_GRAPH` / `FIELDS` JSONB 快照，重启零冷启动并在每次发布后后台异步刷新。
 
 ## `v2_paper_read` 与版本语义
 

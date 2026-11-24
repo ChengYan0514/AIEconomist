@@ -126,6 +126,13 @@ class SecurityConfiguration {
                 .requestMatchers(HEAD, paperPaths).access(access.require(PAPER_READ))
                 .requestMatchers(POST, "/api/papers/{paperId}/match").access(access.require(OPENALEX_MANAGE, PAPER_READ, JOB_READ))
                 .requestMatchers(POST, "/api/imports", "/api/imports/{jobId}/confirm").access(access.require(PAPER_WRITE, JOB_READ))
+                .requestMatchers(POST, "/api/causal/read-model/refresh").access(access.requireAny(SYSTEM_MANAGE, CAUSAL_EXTRACT))
+                .requestMatchers(POST, "/api/causal/extractions/**").access(access.require(CAUSAL_EXTRACT, PAPER_READ, CAUSAL_READ))
+                .requestMatchers(POST, "/api/causal/extractions").access(access.require(CAUSAL_EXTRACT, PAPER_READ, CAUSAL_READ))
+                .requestMatchers(GET, "/api/causal/runs/**").access(access.require(CAUSAL_EXTRACT, PAPER_READ, CAUSAL_READ))
+                .requestMatchers(HEAD, "/api/causal/runs/**").access(access.require(CAUSAL_EXTRACT, PAPER_READ, CAUSAL_READ))
+                .requestMatchers(GET, "/api/causal/**").access(access.require(CAUSAL_READ))
+                .requestMatchers(HEAD, "/api/causal/**").access(access.require(CAUSAL_READ))
                 .requestMatchers("/api/jobs", "/api/jobs/**").access(access.require(JOB_READ))
                 .requestMatchers("/api/papers", "/api/papers/**").access(access.require(PAPER_WRITE))
                 .anyRequest().access(access.require(PAPER_READ));

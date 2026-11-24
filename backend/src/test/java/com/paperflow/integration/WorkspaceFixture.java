@@ -34,6 +34,7 @@ final class WorkspaceFixture implements AutoCloseable {
     private final String schema = "pf_test_" + UUID.randomUUID().toString().replace("-", "").substring(0, 12);
     private final ExecutorService mineruRequests = Executors.newCachedThreadPool();
     private final HttpServer mineru;
+    private final MockCausalEngine causalEngine;
     private final Path directory;
     private final AtomicInteger task = new AtomicInteger();
     private final AtomicInteger uploads = new AtomicInteger();
@@ -50,6 +51,7 @@ final class WorkspaceFixture implements AutoCloseable {
             mineru.setExecutor(mineruRequests);
             mineru.createContext("/v1/", this::mineruResponse);
             mineru.start();
+            causalEngine = new MockCausalEngine();
         } catch (Exception error) {
             throw new IllegalStateException("Cannot prepare isolated Paperflow fixture", error);
         }
@@ -65,6 +67,7 @@ final class WorkspaceFixture implements AutoCloseable {
         properties.add("paperflow.legacy-storage", fixture::legacy);
         properties.add("paperflow.mineru-url", fixture::mineru);
         properties.add("paperflow.mineru-timeout", () -> "PT5S");
+        properties.add("paperflow.causal.engine-url", fixture::causalEngineUrl);
         properties.add("paperflow.admin-username", () -> "integration");
         properties.add("paperflow.admin-password", () -> "workspace-test-password");
         properties.add("paperflow.job-delay", () -> 30);
@@ -105,6 +108,8 @@ final class WorkspaceFixture implements AutoCloseable {
     String password() { return password; }
     String snapshot() { return schema + "_snapshot"; }
     String mineru() { return "http://127.0.0.1:" + mineru.getAddress().getPort(); }
+    String causalEngineUrl() { return causalEngine.url(); }
+    MockCausalEngine causalEngine() { return causalEngine; }
     Path legacy() { return directory.resolve("legacy"); }
     Path storage() { return directory.resolve("v2"); }
 
@@ -197,5 +202,6 @@ final class WorkspaceFixture implements AutoCloseable {
     public void close() {
         mineru.stop(0);
         mineruRequests.shutdownNow();
+        causalEngine.close();
     }
 }

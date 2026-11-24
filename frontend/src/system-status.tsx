@@ -10,6 +10,8 @@ const dependencies = [
   ["CURRENT_STORAGE", "新版文件存储"],
   ["LEGACY_STORAGE", "旧版文件存储"],
   ["OPENALEX_SNAPSHOT", "OpenAlex 快照"],
+  ["CAUSAL_DATABASE", "因果知识库"],
+  ["CAUSAL_ENGINE", "因果抽取引擎"],
 ] as const
 
 const states = {
@@ -30,6 +32,9 @@ type SystemReport = {
     maxOriginalBytes: number
     maxZipBytes: number
     maxJobTargets: number
+    causalEnabled: boolean
+    causalDefaultMode: string
+    causalMaxBatchTargets: number
   }
 }
 
@@ -43,7 +48,7 @@ export function SystemStatus() {
   const configuration = data?.configuration
 
   return <>
-    <SectionHeader title="系统状态" description="核验数据库、MinerU 解析服务、文件存储与 OpenAlex 快照的实时可用性。"
+    <SectionHeader title="系统状态" description="核验数据库、MinerU 解析服务、文件存储、OpenAlex 快照与因果图谱服务的实时可用性。"
       actions={<Button type="button" onClick={reload} disabled={loading}>
         <RefreshCw size={15} className={loading ? "animate-spin" : undefined} aria-hidden="true" />
         {loading ? "正在检查…" : "重新检查"}
@@ -82,6 +87,9 @@ export function SystemStatus() {
         <div className="config-cell"><dt>单文件上限</dt><dd className="tabular-nums">{byteLimit(configuration?.maxOriginalBytes)}</dd></div>
         <div className="config-cell"><dt>ZIP 上限</dt><dd className="tabular-nums">{byteLimit(configuration?.maxZipBytes)}</dd></div>
         <div className="config-cell"><dt>每任务论文上限</dt><dd className="tabular-nums">{configuration ? configuration.maxJobTargets.toLocaleString("zh-CN") + " 篇" : "—"}</dd></div>
+        <div className="config-cell"><dt>因果抽取开关</dt><dd>{configuration ? (configuration.causalEnabled ? "已启用" : "已关闭") : "—"}</dd></div>
+        <div className="config-cell"><dt>因果默认模式</dt><dd>{configuration ? (configuration.causalDefaultMode === "STANDARDIZED" ? "STW 标准变量" : "原始变量") : "—"}</dd></div>
+        <div className="config-cell"><dt>因果单批上限</dt><dd className="tabular-nums">{configuration ? configuration.causalMaxBatchTargets.toLocaleString("zh-CN") + " 篇" : "—"}</dd></div>
       </dl>
     </section>
   </>

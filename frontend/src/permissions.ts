@@ -2,7 +2,8 @@ import { createContext, useContext } from "react"
 import type { JobKind } from "./types"
 
 export type Permission = "PAPER_READ" | "CONTENT_READ" | "PAPER_CSV_EXPORT" | "PAPER_WRITE"
-  | "JOB_READ" | "PDF_PARSE" | "FULL_TEXT_IMPORT" | "OPENALEX_MANAGE" | "SYSTEM_MANAGE"
+  | "JOB_READ" | "PDF_PARSE" | "FULL_TEXT_IMPORT" | "OPENALEX_MANAGE"
+  | "CAUSAL_READ" | "CAUSAL_EXTRACT" | "SYSTEM_MANAGE"
 
 export const roles: Record<string, string> = { SYSTEM_ADMIN: "系统管理员", DATA_MAINTAINER: "数据维护员", READ_ONLY: "只读用户" }
 

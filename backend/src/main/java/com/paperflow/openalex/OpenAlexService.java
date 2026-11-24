@@ -46,10 +46,12 @@ public final class OpenAlexService {
             if (batch.isEmpty()) return imported;
             var rows = batch.stream().map(work -> new Work(work.workId(), work.year(), work.title(),
                     PaperMetadata.doi(work.doi()), work.authors())).toList();
+            var topics = catalog.snapshotWorkTopics(schema, rows.stream().map(Work::workId).toList());
             transactions.executeWithoutResult(status -> {
                 catalog.lockSource(source);
                 checkClaim.run();
                 catalog.save(source, rows);
+                if (!topics.isEmpty()) catalog.saveTopics(topics);
             });
             after = batch.get(batch.size() - 1).workId();
             imported += batch.size();

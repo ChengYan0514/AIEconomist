@@ -44,3 +44,19 @@ paperflow:
   admin-username: ${PAPERFLOW_ADMIN_USERNAME:}
   admin-password: ${PAPERFLOW_ADMIN_PASSWORD:}
   job-delay: ${PAPERFLOW_JOB_DELAY:1000}
+  causal:
+    enabled: ${PAPERFLOW_CAUSAL_ENABLED:false}
+    default-mode: ${PAPERFLOW_CAUSAL_DEFAULT_MODE:RAW}
+    engine-url: ${PAPERFLOW_CAUSAL_ENGINE_URL:http://127.0.0.1:${PAPERFLOW_CAUSAL_ENGINE_PORT:18003}}
+    request-timeout: ${PAPERFLOW_CAUSAL_TIMEOUT:PT1H}
+    max-concurrency: ${PAPERFLOW_CAUSAL_CONCURRENCY:2}
+    max-calls: ${PAPERFLOW_CAUSAL_MAX_CALLS:2000}
+    max-batch-targets: ${PAPERFLOW_CAUSAL_MAX_BATCH_TARGETS:500}
+    cache-ttl: ${PAPERFLOW_CAUSAL_CACHE_TTL:PT12H}
+    jdbc-url: ${PAPERFLOW_CAUSAL_JDBC_URL:}
+    db-host: ${CAUSAL_DB_HOST:}
+    db-port: ${CAUSAL_DB_PORT:}
+    db-name: ${CAUSAL_DB_NAME:}
+    db-schema: ${CAUSAL_DB_SCHEMA:}
+    db-user: ${CAUSAL_DB_USER:}
+    db-password: ${CAUSAL_DB_PASSWORD:}

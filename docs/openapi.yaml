@@ -384,7 +384,7 @@ paths:
     get:
       operationId: checkSystemStatus
       description: >-
-        仅系统管理员可用。每次请求先通过数据库重新校验会话与权限，再独立检查五项依赖。
+        仅系统管理员可用。每次请求先通过数据库重新校验会话与权限，再独立检查七项依赖。
         进入检查后，某项不可用时仍返回其余结果。若数据库不可用导致会话无法校验，请求失败，
         页面保留上次结果及检查时间，并提示刷新失败。响应禁止缓存。
       responses:
@@ -774,6 +774,195 @@ paths:
         '403': {$ref: '#/components/responses/Error'}
         '404': {$ref: '#/components/responses/Error'}
         '409': {$ref: '#/components/responses/Error'}
+  /causal/summary:
+    get:
+      operationId: causalSummary
+      description: 需要 CAUSAL_READ。返回基于预聚合读模型的因果图谱全库统计、学科子领域、方法列表与数据集修订号。
+      responses:
+        '200': {description: 图谱总览摘要, content: {application/json: {schema: {$ref: '#/components/schemas/CausalGraphSummary'}}}}
+        '403': {$ref: '#/components/responses/Error'}
+  /causal/graph:
+    get:
+      operationId: causalGraph
+      description: 需要 CAUSAL_READ。基于 v2_causal_edge_index 按变量、最小主张数、最小方法数与子领域筛选返回因果子图。
+      parameters:
+        - {name: minRecordCount, in: query, schema: {type: integer, minimum: 1}}
+        - {name: minPaperCount, in: query, schema: {type: integer, minimum: 1}}
+        - {name: minDiversity, in: query, schema: {type: integer, minimum: 1}}
+        - {name: subfields, in: query, schema: {type: array, items: {type: string}}}
+        - {name: q, in: query, schema: {type: string, maxLength: 255}}
+        - {name: maxNodes, in: query, schema: {type: integer, minimum: 1, maximum: 1000}}
+        - {name: maxEdges, in: query, schema: {type: integer, minimum: 1, maximum: 2000}}
+      responses:
+        '200': {description: 因果网络子图, content: {application/json: {schema: {$ref: '#/components/schemas/CausalGraphData'}}}}
+        '403': {$ref: '#/components/responses/Error'}
+  /causal/fields:
+    get:
+      operationId: causalFields
+      description: 需要 CAUSAL_READ。返回领域分析（学科子领域×细分主题明细及高频关系/高频变量/方法分布洞察）。
+      responses:
+        '200': {description: 领域分析结果, content: {application/json: {schema: {$ref: '#/components/schemas/CausalFieldAnalysis'}}}}
+        '403': {$ref: '#/components/responses/Error'}
+  /causal/variables/{name}:
+    get:
+      operationId: causalVariableDetail
+      description: 需要 CAUSAL_READ。返回因果变量详情、一跳出入边、学科子领域分布与发表年份分布。
+      parameters: [{name: name, in: path, required: true, schema: {type: string, maxLength: 255}}]
+      responses:
+        '200': {description: 变量详情, content: {application/json: {schema: {type: object}}}}
+        '404': {$ref: '#/components/responses/Error'}
+  /causal/relations:
+    get:
+      operationId: causalRelationDetail
+      description: 需要 CAUSAL_READ。按原因变量与结果变量查看因果关系方向分布、统计与原文证据。
+      parameters:
+        - {name: cause, in: query, required: true, schema: {type: string, maxLength: 255}}
+        - {name: effect, in: query, required: true, schema: {type: string, maxLength: 255}}
+      responses:
+        '200': {description: 关系证据详情, content: {application/json: {schema: {type: object}}}}
+        '404': {$ref: '#/components/responses/Error'}
+  /causal/relations/{claimId}:
+    get:
+      operationId: causalRelationById
+      description: 需要 CAUSAL_READ。按 claimId 查看因果关系详情与证据记录。
+      parameters: [{name: claimId, in: path, required: true, schema: {type: integer, format: int64, minimum: 1}}]
+      responses:
+        '200': {description: 关系证据详情, content: {application/json: {schema: {type: object}}}}
+        '404': {$ref: '#/components/responses/Error'}
+  /causal/papers/{workId}:
+    get:
+      operationId: causalPaperDetail
+      description: 需要 CAUSAL_READ。按 OpenAlex 作品 ID 查看论文因果主张与单篇子图，已关联本地论文时附带 paperId。
+      parameters: [{name: workId, in: path, required: true, schema: {type: string}}]
+      responses:
+        '200': {description: 论文因果主张详情, content: {application/json: {schema: {type: object}}}}
+  /causal/papers/{workId}/summary:
+    get:
+      operationId: causalPaperSummary
+      description: 需要 CAUSAL_READ。返回单篇 OpenAlex 作品的因果主张、关系与变量计数摘要。
+      parameters: [{name: workId, in: path, required: true, schema: {type: string}}]
+      responses:
+        '200': {description: 论文因果摘要, content: {application/json: {schema: {type: object}}}}
+  /causal/search/variables:
+    get:
+      operationId: searchCausalVariables
+      description: 需要 CAUSAL_READ。检索图谱因果变量。
+      parameters:
+        - {name: q, in: query, required: true, schema: {type: string, maxLength: 255}}
+        - {name: limit, in: query, schema: {type: integer, minimum: 1, maximum: 50}}
+      responses:
+        '200': {description: 匹配变量列表, content: {application/json: {schema: {type: array, items: {type: object}}}}}
+  /causal/search/terms:
+    get:
+      operationId: searchCausalTerms
+      description: 需要 CAUSAL_READ。检索 STW 经济学主题词表供自动补全。
+      parameters:
+        - {name: q, in: query, required: true, schema: {type: string, maxLength: 255}}
+        - {name: limit, in: query, schema: {type: integer, minimum: 1, maximum: 50}}
+      responses:
+        '200': {description: STW 标准词列表, content: {application/json: {schema: {type: array, items: {type: string}}}}}
+  /causal/search/papers:
+    get:
+      operationId: searchCausalPapers
+      description: 需要 CAUSAL_READ。按作品 ID 或标题检索包含因果主张的论文。
+      parameters:
+        - {name: q, in: query, required: true, schema: {type: string, maxLength: 255}}
+        - {name: limit, in: query, schema: {type: integer, minimum: 1, maximum: 50}}
+      responses:
+        '200': {description: 论文检索结果, content: {application/json: {schema: {type: array, items: {type: object}}}}}
+  /causal/read-model/refresh:
+    post:
+      operationId: refreshCausalReadModel
+      description: 需要 SYSTEM_MANAGE 或 CAUSAL_EXTRACT。手动重建 v2_causal_edge_index 与 v2_causal_snapshot 读模型。
+      responses:
+        '200': {description: 刷新结果, content: {application/json: {schema: {type: object}}}}
+        '403': {$ref: '#/components/responses/Error'}
+  /causal/extractions/estimate:
+    post:
+      operationId: estimateCausalExtraction
+      description: 需要 CAUSAL_EXTRACT。预估目标范围的可执行论文数、跳过原因、引擎配置版本与调用上限。
+      requestBody:
+        required: true
+        content: {application/json: {schema: {$ref: '#/components/schemas/CausalExtractionRequest'}}}
+      responses:
+        '200': {description: 预估结果, content: {application/json: {schema: {type: object}}}}
+        '400': {$ref: '#/components/responses/Error'}
+        '403': {$ref: '#/components/responses/Error'}
+  /causal/extractions:
+    get:
+      operationId: listCausalBatches
+      description: 需要 CAUSAL_READ。分页查询因果抽取批次。
+      parameters: [{$ref: '#/components/parameters/Page'}, {$ref: '#/components/parameters/Size'}]
+      responses:
+        '200': {description: 批次分页, content: {application/json: {schema: {$ref: '#/components/schemas/Page'}}}}
+    post:
+      operationId: createCausalBatch
+      description: 需要 CAUSAL_EXTRACT。创建因果抽取批次并由事件驱动异步编排器提交至 causal-engine。
+      requestBody:
+        required: true
+        content: {application/json: {schema: {$ref: '#/components/schemas/CausalExtractionRequest'}}}
+      responses:
+        '202': {description: 批次已受理, content: {application/json: {schema: {type: object}}}}
+        '400': {$ref: '#/components/responses/Error'}
+        '403': {$ref: '#/components/responses/Error'}
+        '409': {$ref: '#/components/responses/Error'}
+        '503': {$ref: '#/components/responses/Error'}
+  /causal/extractions/{batchId}:
+    get:
+      operationId: getCausalBatch
+      description: 需要 CAUSAL_READ。查看批次详情及按状态筛选分页的单篇抽取记录。
+      parameters:
+        - {name: batchId, in: path, required: true, schema: {type: string, format: uuid}}
+        - {name: status, in: query, schema: {type: string, enum: [QUEUED, RUNNING, PUBLISHING, SUCCEEDED, SKIPPED, FAILED, CANCELLED]}}
+        - {$ref: '#/components/parameters/Page'}
+        - {$ref: '#/components/parameters/Size'}
+      responses:
+        '200': {description: 批次与单篇记录详情, content: {application/json: {schema: {type: object}}}}
+        '404': {$ref: '#/components/responses/Error'}
+  /causal/extractions/{batchId}/events:
+    get:
+      operationId: streamCausalBatchEvents
+      description: 需要 CAUSAL_READ。建立 SSE 事件流实时推送该批次单篇阶段变化与完成通知。
+      parameters: [{name: batchId, in: path, required: true, schema: {type: string, format: uuid}}]
+      responses:
+        '200': {description: text/event-stream 实时事件流, content: {text/event-stream: {schema: {type: string}}}}
+        '404': {$ref: '#/components/responses/Error'}
+  /causal/extractions/{batchId}/cancel:
+    post:
+      operationId: cancelCausalBatch
+      description: 需要 CAUSAL_EXTRACT。取消批次内未发布项，已落库发布不受影响。
+      parameters: [{name: batchId, in: path, required: true, schema: {type: string, format: uuid}}]
+      responses:
+        '200': {description: 批次已取消, content: {application/json: {schema: {type: object}}}}
+        '409': {$ref: '#/components/responses/Error'}
+  /causal/extractions/{batchId}/retry:
+    post:
+      operationId: retryCausalBatch
+      description: 需要 CAUSAL_EXTRACT。在原批次内重试失败项，优先复用引擎检查点或直接幂等重投发布。
+      parameters: [{name: batchId, in: path, required: true, schema: {type: string, format: uuid}}]
+      responses:
+        '202': {description: 已重新调度重试, content: {application/json: {schema: {type: object}}}}
+        '409': {$ref: '#/components/responses/Error'}
+        '503': {$ref: '#/components/responses/Error'}
+  /causal/runs/{runId}/artifacts:
+    get:
+      operationId: listCausalRunArtifacts
+      description: 需要 CAUSAL_EXTRACT。列出单篇运行可用的白名单阶段产物。
+      parameters: [{name: runId, in: path, required: true, schema: {type: string, format: uuid}}]
+      responses:
+        '200': {description: 产物清单, content: {application/json: {schema: {type: array, items: {type: object}}}}}
+        '404': {$ref: '#/components/responses/Error'}
+  /causal/runs/{runId}/artifacts/{name}:
+    get:
+      operationId: downloadCausalRunArtifact
+      description: 需要 CAUSAL_EXTRACT。受控代理下载白名单阶段产物文件。
+      parameters:
+        - {name: runId, in: path, required: true, schema: {type: string, format: uuid}}
+        - {name: name, in: path, required: true, schema: {type: string}}
+      responses:
+        '200': {description: 产物文件流, content: {application/octet-stream: {schema: {type: string, format: binary}}}}
+        '400': {$ref: '#/components/responses/Error'}
+        '404': {$ref: '#/components/responses/Error'}
 components:
   securitySchemes:
     session:
@@ -843,10 +1032,11 @@ components:
           items: {$ref: '#/components/schemas/BusinessPermission'}
     BusinessPermission:
       type: string
-      enum: [PAPER_READ, CONTENT_READ, PAPER_CSV_EXPORT, PAPER_WRITE, JOB_READ, PDF_PARSE, FULL_TEXT_IMPORT, OPENALEX_MANAGE]
+      enum: [PAPER_READ, CONTENT_READ, PAPER_CSV_EXPORT, PAPER_WRITE, JOB_READ, PDF_PARSE, FULL_TEXT_IMPORT, OPENALEX_MANAGE, CAUSAL_READ, CAUSAL_EXTRACT]
       description: |
         CONTENT_READ 和 PAPER_WRITE 依赖 PAPER_READ。PDF_PARSE 和 FULL_TEXT_IMPORT 依赖 JOB_READ。
-        OPENALEX_MANAGE 依赖 PAPER_READ 及 JOB_READ。ZIP 批量导入需要 PAPER_WRITE 和 JOB_READ。CSV 导出单独授权。
+        OPENALEX_MANAGE 依赖 PAPER_READ 及 JOB_READ。CAUSAL_EXTRACT 依赖 PAPER_READ 及 CAUSAL_READ。
+        ZIP 批量导入需要 PAPER_WRITE 和 JOB_READ。CSV 导出单独授权。
     RoleSummary:
       type: object
       required: [id, name, description, builtIn, userCount]
@@ -912,14 +1102,16 @@ components:
         temporaryPassword: {type: string, format: password, readOnly: true}
     Permission:
       type: string
-      enum: [PAPER_READ, CONTENT_READ, PAPER_CSV_EXPORT, PAPER_WRITE, JOB_READ, PDF_PARSE, FULL_TEXT_IMPORT, OPENALEX_MANAGE, SYSTEM_MANAGE]
+      enum: [PAPER_READ, CONTENT_READ, PAPER_CSV_EXPORT, PAPER_WRITE, JOB_READ, PDF_PARSE, FULL_TEXT_IMPORT, OPENALEX_MANAGE, CAUSAL_READ, CAUSAL_EXTRACT, SYSTEM_MANAGE]
       description: |
         PAPER_READ 允许查阅论文书目、关联及出版来源。CONTENT_READ 允许读取原件、已发布全文及资源。
         PAPER_CSV_EXPORT 单独授权 CSV 下载。PAPER_WRITE 允许单篇导入、编辑、替换、归档恢复。ZIP 批量导入还需要 JOB_READ。
         JOB_READ 允许读任务。PDF_PARSE、FULL_TEXT_IMPORT 分别允许提交或重试相应任务。
-        OPENALEX_MANAGE 允许元数据导入、匹配和候选复核。SYSTEM_MANAGE 仅由内置系统管理员持有，用于管理用户和角色、查看系统状态及审计。
+        OPENALEX_MANAGE 允许元数据导入、匹配和候选复核。
+        CAUSAL_READ 允许查阅因果图谱、领域分析、论文因果主张及因果抽取批次。CAUSAL_EXTRACT 允许发起、取消、重试因果抽取与下载产物。
+        SYSTEM_MANAGE 仅由内置系统管理员持有，用于管理用户和角色、查看系统状态及审计。
         系统管理员拥有全部权限。数据维护员拥有除 PAPER_CSV_EXPORT 和 SYSTEM_MANAGE 外的权限。
-        只读用户拥有 PAPER_READ 和 CONTENT_READ。任务提交和重试基于任务类型校验执行及 JOB_READ 权限。
+        只读用户拥有 PAPER_READ、CONTENT_READ 和 CAUSAL_READ。任务提交和重试基于任务类型校验执行及 JOB_READ 权限。
     Page:
       type: object
       required: [items, page, size, total]
@@ -935,19 +1127,22 @@ components:
       properties:
         checks:
           type: array
-          minItems: 5
-          maxItems: 5
+          minItems: 7
+          maxItems: 7
           description: 每项依赖恰好返回一个结果。
           items: {$ref: '#/components/schemas/DependencyCheck'}
         configuration:
           type: object
           additionalProperties: false
-          required: [version, maxOriginalBytes, maxZipBytes, maxJobTargets]
+          required: [version, maxOriginalBytes, maxZipBytes, maxJobTargets, causalEnabled, causalDefaultMode, causalMaxBatchTargets]
           properties:
             version: {type: string, description: 当前应用的构建版本}
             maxOriginalBytes: {type: integer, format: int64, minimum: 0}
             maxZipBytes: {type: integer, format: int64, minimum: 0}
             maxJobTargets: {type: integer, minimum: 1}
+            causalEnabled: {type: boolean}
+            causalDefaultMode: {type: string, enum: [RAW, STANDARDIZED]}
+            causalMaxBatchTargets: {type: integer, minimum: 1}
     DependencyCheck:
       type: object
       additionalProperties: false
@@ -955,7 +1150,7 @@ components:
       properties:
         dependency:
           type: string
-          enum: [POSTGRESQL, MINERU, CURRENT_STORAGE, LEGACY_STORAGE, OPENALEX_SNAPSHOT]
+          enum: [POSTGRESQL, MINERU, CURRENT_STORAGE, LEGACY_STORAGE, OPENALEX_SNAPSHOT, CAUSAL_DATABASE, CAUSAL_ENGINE]
         state: {type: string, enum: [HEALTHY, UNAVAILABLE, NOT_CHECKED]}
         checkedAt: {type: [string, 'null'], format: date-time, description: 取得结果的时间。未检查时为空。}
         message: {type: string, description: 固定的简短说明，不包含部署配置或底层异常文本。}
@@ -1181,3 +1376,37 @@ components:
         originalPath: {type: [string, 'null'], description: CSV 中的包内原件路径。未填写路径或旧任务未记录路径时为空。}
         reason: {type: [string, 'null'], description: 预检发现重复或问题的原因。}
         existingPaperId: {type: [string, 'null'], description: 预检发现已登记的重复论文时返回其实际 ID。}
+    CausalGraphSummary:
+      type: object
+      required: [overview, subfields, methods, version]
+      properties:
+        overview: {type: object}
+        subfields: {type: array, items: {type: string}}
+        methods: {type: array, items: {type: string}}
+        version: {type: object}
+    CausalGraphData:
+      type: object
+      required: [nodes, edges]
+      properties:
+        nodes: {type: array, items: {type: object}}
+        edges: {type: array, items: {type: object}}
+    CausalFieldAnalysis:
+      type: object
+      required: [items, insights]
+      properties:
+        items: {type: array, items: {type: object}}
+        insights: {type: object}
+    CausalExtractionRequest:
+      type: object
+      required: [target]
+      properties:
+        ingestionMode: {type: string, enum: [RAW, STANDARDIZED]}
+        target:
+          type: object
+          required: [mode]
+          properties:
+            mode: {type: string, enum: [PAPER_IDS, WORK_IDS, SOURCE_IDS, FILTER]}
+            paperIds: {type: array, items: {type: string}}
+            workIds: {type: array, items: {type: string}}
+            sourceIds: {type: array, items: {type: string}}
+            filters: {type: object}

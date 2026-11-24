@@ -8,7 +8,7 @@ import org.springframework.scheduling.annotation.EnableScheduling;
 
 @SpringBootApplication(scanBasePackages = "com.paperflow")
 @MapperScan("com.paperflow.adapters.persistence")
-@EnableConfigurationProperties(WorkspaceProperties.class)
+@EnableConfigurationProperties({WorkspaceProperties.class, CausalProperties.class})
 @EnableScheduling
 public class Paperflow {
     public static void main(String[] args) {

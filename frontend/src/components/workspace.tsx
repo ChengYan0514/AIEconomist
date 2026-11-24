@@ -1,7 +1,7 @@
 import {
-  Activity, BookMarked, ChevronDown, ChevronRight, ClipboardList, Database, FileText,
+  Activity, BarChart3, BookMarked, ChevronDown, ChevronRight, ClipboardList, Database, FileText,
   LayoutDashboard, LogOut, Menu, Network, PanelLeftClose, PanelLeftOpen, Search,
-  Shield, ShieldCheck, Upload, UsersRound, X,
+  Shield, ShieldCheck, Sparkles, Upload, UsersRound, X,
 } from "lucide-react"
 import { useEffect, useState, type ReactNode } from "react"
 import { usePermissions, type Permission } from "../permissions"
@@ -63,7 +63,9 @@ const navigationGroups: NavGroup[] = [
     id: "knowledge",
     label: "知识图谱",
     items: [
-      { path: "/causal-graph", label: "因果图谱", icon: Network, badge: "规划中" },
+      { path: "/causal-graph", label: "因果图谱", icon: Network, permission: "CAUSAL_READ" },
+      { path: "/causal-fields", label: "领域分析", icon: BarChart3, permission: "CAUSAL_READ" },
+      { path: "/causal-extraction", label: "因果抽取", icon: Sparkles, permission: "CAUSAL_READ" },
     ],
   },
   {

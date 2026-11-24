@@ -26,6 +26,21 @@ public final class DatabaseStatus {
         query(snapshotQuery);
     }
 
+    public void checkCausal(DataSource causalSource) throws SQLException {
+        String sql = """
+                SELECT (SELECT claim_id FROM claim_table LIMIT 1),
+                       (SELECT record_id FROM paper_claim_table LIMIT 1),
+                       (SELECT label_en FROM stw_label LIMIT 1),
+                       (SELECT revision FROM causal_dataset_revision WHERE id = 1)
+                """;
+        try (var connection = causalSource.getConnection(); var statement = connection.createStatement()) {
+            statement.setQueryTimeout(2);
+            try (var rows = statement.executeQuery(sql)) {
+                rows.next();
+            }
+        }
+    }
+
     private void query(String sql) throws SQLException {
         try (var connection = dataSource.getConnection(); var statement = connection.createStatement()) {
             statement.setQueryTimeout(2);

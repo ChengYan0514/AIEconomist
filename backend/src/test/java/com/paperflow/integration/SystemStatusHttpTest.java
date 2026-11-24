@@ -57,13 +57,21 @@ class SystemStatusHttpTest {
     void returnsTimestampedChecksAndOnlyAllowlistedEffectiveConfiguration() throws Exception {
         var response = refresh(loginAdmin());
         assertKeys(response, "checks", "configuration");
-        assertThat(checks(response).values()).allSatisfy(check -> assertThat(check.path("state").asText()).isEqualTo("HEALTHY"));
+        var checkMap = checks(response);
+        for (String dep : List.of("POSTGRESQL", "MINERU", "CURRENT_STORAGE", "LEGACY_STORAGE", "OPENALEX_SNAPSHOT", "CAUSAL_DATABASE")) {
+            assertThat(checkMap.get(dep).path("state").asText()).isEqualTo("HEALTHY");
+        }
+        assertThat(checkMap.get("CAUSAL_ENGINE").path("state").asText()).isEqualTo("NOT_CHECKED");
         var config = response.path("configuration");
-        assertKeys(config, "version", "maxOriginalBytes", "maxZipBytes", "maxJobTargets");
+        assertKeys(config, "version", "maxOriginalBytes", "maxZipBytes", "maxJobTargets",
+                "causalEnabled", "causalDefaultMode", "causalMaxBatchTargets");
         assertThat(config.path("version").asText()).matches("\\d+\\.\\d+\\.\\d+.*");
         assertThat(config.path("maxOriginalBytes").asLong()).isEqualTo(104857600);
         assertThat(config.path("maxZipBytes").asLong()).isEqualTo(157286400);
         assertThat(config.path("maxJobTargets").asInt()).isEqualTo(10000);
+        assertThat(config.path("causalEnabled").asBoolean()).isFalse();
+        assertThat(config.path("causalDefaultMode").asText()).isEqualTo("RAW");
+        assertThat(config.path("causalMaxBatchTargets").asInt()).isEqualTo(500);
         assertThat(response.toString()).doesNotContain(fixture.mineru(), fixture.jdbcUrl(), fixture.snapshot(),
                 fixture.legacy().toString(), fixture.storage().toString(), "workspace-test-password");
         assertThat(fixture.storage()).isEmptyDirectory();
@@ -159,11 +167,14 @@ class SystemStatusHttpTest {
         Map<String, JsonNode> result = new HashMap<>();
         response.path("checks").forEach(check -> {
             assertKeys(check, "dependency", "state", "checkedAt", "message");
-            assertThat(Instant.parse(check.path("checkedAt").asText())).isBeforeOrEqualTo(Instant.now());
+            if (!check.path("checkedAt").isNull()) {
+                assertThat(Instant.parse(check.path("checkedAt").asText())).isBeforeOrEqualTo(Instant.now());
+            }
             assertThat(check.path("message").asText()).isNotBlank();
             assertThat(result.put(check.path("dependency").asText(), check)).isNull();
         });
-        assertThat(result.keySet()).containsExactlyInAnyOrder("POSTGRESQL", "MINERU", "CURRENT_STORAGE", "LEGACY_STORAGE", "OPENALEX_SNAPSHOT");
+        assertThat(result.keySet()).containsExactlyInAnyOrder(
+                "POSTGRESQL", "MINERU", "CURRENT_STORAGE", "LEGACY_STORAGE", "OPENALEX_SNAPSHOT", "CAUSAL_DATABASE", "CAUSAL_ENGINE");
         return result;
     }
 

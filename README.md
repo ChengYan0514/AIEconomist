@@ -40,6 +40,8 @@ npm --prefix frontend run dev
 - 解析完成后，从论文详情或任务中心发起全文导入。结构化 JSON 按页入库，保留标题、图表、公式及图片。历史解析产物仍可按旧格式读取。
 - 处理目标可由所选论文或一个来源及年份范围确定。每个任务最多 10,000 篇，可用年份缩小范围。
 - OpenAlex 元数据由来源选定，并可限制年份。匹配优先使用唯一 DOI，其次使用精确书目。多候选可在任务详情确认。
+- 因果图谱与领域分析通过 `v2_causal_edge_index` 与 `v2_causal_snapshot` 预聚合读模型加速查询，原地接续既有 `claim_table`、`paper_claim_table` 与 `stw_label`（可通过 `CAUSAL_DB_*` 独立配置因果库）。
+- 因果抽取默认关闭；启用时通过可选 Compose profile 启动 `causal-engine` Sidecar（`docker compose --profile causal up -d --build causal-engine`）并设置 `PAPERFLOW_CAUSAL_ENABLED=true`，模型凭据仅注入 `causal-engine`，详见 [causal-engine/README.md](causal-engine/README.md)。
 - 新版文件按原件修订和解析执行保存。任务中心保留预检、执行和重试记录。
 
 [管理端规格](docs/spec.md) · [平台调研](docs/platform-research.md) · [首版设计](docs/design.md)

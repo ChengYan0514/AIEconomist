@@ -1,6 +1,7 @@
-import { Archive, BookOpen, BookOpenCheck, Database, ExternalLink, Eye, Plus, ScanText, Search, Upload, Workflow, X } from "lucide-react"
+import { Archive, BookOpen, BookOpenCheck, Database, ExternalLink, Eye, Plus, ScanText, Search, Sparkles, Upload, Workflow, X } from "lucide-react"
 import { useEffect, useState, type FormEvent } from "react"
 import { api, dateLabel, errorMessage, jobPath, paperPath, params, useQuery } from "../api"
+import { extractionEntryHref } from "../causal/types"
 import { Drawer } from "../components/drawer"
 import { Chip, Empty, Loading, Notice, Pagination, SourceField, paperLabels } from "../components/shared"
 import { Button } from "../components/ui/button"
@@ -34,11 +35,12 @@ export function Library() {
   const loc = useLocation()
   const { can, canJob, canProcess } = usePermissions()
   const canWrite = can("PAPER_WRITE")
+  const canCausalExtract = can("CAUSAL_EXTRACT")
   const initialState = parseUrl(loc.search)
   const [filter, setFilter] = useState<FilterState>(initialState.filter)
   const [draft, setDraft] = useState<FilterState>(initialState.filter)
   const [archived, setArchived] = useState(initialState.archived)
-  const canSelect = !archived && canProcess
+  const canSelect = !archived && (canProcess || canCausalExtract)
   const [page, setPage] = useState(0)
   const [selected, setSelected] = useState<Set<string>>(new Set())
   const [dialog, setDialog] = useState<"upload" | "archive" | "process" | null>(null)
@@ -162,7 +164,7 @@ export function Library() {
           <button type="button" aria-pressed={!archived} onClick={() => switchArchive(false)}><BookOpenCheck size={15} aria-hidden="true" />论文列表</button>
           <button type="button" aria-pressed={archived} onClick={() => switchArchive(true)}><Archive size={15} aria-hidden="true" />归档</button>
         </div>
-        {canSelect && selected.size === 0 && <Button type="button" variant="outline" size="sm" onClick={() => setDialog("process")}><Workflow size={15} aria-hidden="true" />批量处理</Button>}
+        {canProcess && !archived && selected.size === 0 && <Button type="button" variant="outline" size="sm" onClick={() => setDialog("process")}><Workflow size={15} aria-hidden="true" />批量处理</Button>}
       </div>
       {result.error ? <div className="p-5"><Notice error>{result.error.message}</Notice><Button className="mt-3" variant="outline" onClick={result.reload}>重新加载</Button></div> :
         result.loading && !rows.length ? <Loading /> : !rows.length ?
@@ -195,7 +197,10 @@ export function Library() {
     {canSelect && selected.size > 0 && <div className="selection-dock">
       <span role="status" className="selection-dock-count">已选择 {selected.size} 篇</span>
       <div className="selection-dock-actions">
-        <Button type="button" variant="default" size="sm" className="dock-primary" onClick={() => setDialog("process")}><Workflow size={14} aria-hidden="true" />批量处理</Button>
+        {canProcess && <Button type="button" variant="default" size="sm" className="dock-primary" onClick={() => setDialog("process")}><Workflow size={14} aria-hidden="true" />批量处理</Button>}
+        {canCausalExtract && <Button asChild variant={canProcess ? "outline" : "default"} size="sm">
+          <a href={extractionEntryHref({ mode: "PAPER_IDS", ids: [...selected] })}><Sparkles size={14} aria-hidden="true" />因果抽取</a>
+        </Button>}
         <Button type="button" variant="ghost" size="sm" className="dock-ghost" onClick={() => setSelected(new Set())}>取消选择</Button>
       </div>
     </div>}

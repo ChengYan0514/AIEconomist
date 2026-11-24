@@ -22,13 +22,15 @@ test("系统管理员查看依赖状态，刷新失败后保留上次检查结�
   await dependencies.getByRole("row", { name: /新版文件存储.*正常.*读写检查通过/ }).waitFor()
   await dependencies.getByRole("row", { name: /旧版文件存储.*正常.*读取检查通过/ }).waitFor()
   await dependencies.getByRole("row", { name: /OpenAlex 快照.*正常.*快照表可读/ }).waitFor()
+  await dependencies.getByRole("row", { name: /因果知识库.*正常.*因果事实表可读/ }).waitFor()
+  await dependencies.getByRole("row", { name: /因果抽取引擎.*(正常|未检查|不可用)/ }).waitFor()
 
   const config = page.getByRole("region", { name: "有效配置" })
-  for (const text of ["100 MiB", "256 MiB", "10,000 篇", /\d+\.\d+\.\d+/]) {
+  for (const text of ["100 MiB", "256 MiB", "10,000 篇", "500 篇", /\d+\.\d+\.\d+/]) {
     await config.getByText(text, { exact: typeof text === "string" }).waitFor()
   }
   const previousChecks = await dependencies.locator("time").evaluateAll((times) => times.map((time) => time.dateTime))
-  assert.equal(previousChecks.length, 5)
+  assert.ok(previousChecks.length >= 6)
   assert.ok(previousChecks.every((value) => !Number.isNaN(Date.parse(value))))
 
   await page.route("**/api/system-status", (route) => route.fulfill({

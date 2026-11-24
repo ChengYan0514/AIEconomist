@@ -70,7 +70,7 @@ class UserAccessHttpTest {
         var active = http.login("first.reader", PERSONAL_PASSWORD);
         mvc.perform(get("/api/session").session(active)).andExpect(status().isOk())
                 .andExpect(jsonPath("$.mustChangePassword").value(false))
-                .andExpect(jsonPath("$.permissions.length()").value(2));
+                .andExpect(jsonPath("$.permissions.length()").value(3));
         mvc.perform(get("/api/papers").session(active)).andExpect(status().isOk());
         var users = mvc.perform(get("/api/users").session(admin).param("q", "首次登录"))
                 .andExpect(status().isOk()).andExpect(jsonPath("$.items[0].username").value("first.reader")).andReturn();

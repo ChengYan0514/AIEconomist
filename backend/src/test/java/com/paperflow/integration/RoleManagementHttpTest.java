@@ -102,7 +102,7 @@ class RoleManagementHttpTest {
         mvc.perform(get("/api/roles").session(admin)).andExpect(status().isOk())
                 .andExpect(jsonPath("$.permissionGroups[1].permissions[1].code").value("PDF_PARSE"))
                 .andExpect(jsonPath("$.permissionGroups[1].permissions[1].requires[0]").value("JOB_READ"));
-        for (String permission : new String[]{"CONTENT_READ", "PAPER_WRITE", "PDF_PARSE", "FULL_TEXT_IMPORT", "OPENALEX_MANAGE", "SYSTEM_MANAGE"}) {
+        for (String permission : new String[]{"CONTENT_READ", "PAPER_WRITE", "PDF_PARSE", "FULL_TEXT_IMPORT", "OPENALEX_MANAGE", "CAUSAL_EXTRACT", "SYSTEM_MANAGE"}) {
             mvc.perform(http.write(post("/api/roles"), admin, profile("无效权限组合", permission)))
                     .andExpect(status().isBadRequest()).andExpect(jsonPath("$.code").value("INVALID_INPUT"));
         }
@@ -112,7 +112,7 @@ class RoleManagementHttpTest {
         mvc.perform(http.write(delete("/api/roles/READ_ONLY"), admin, null))
                 .andExpect(status().isConflict()).andExpect(jsonPath("$.code").value("BUILT_IN_ROLE"));
         mvc.perform(get("/api/roles/READ_ONLY").session(admin)).andExpect(status().isOk())
-                .andExpect(jsonPath("$.permissions", org.hamcrest.Matchers.containsInAnyOrder("PAPER_READ", "CONTENT_READ")));
+                .andExpect(jsonPath("$.permissions", org.hamcrest.Matchers.containsInAnyOrder("PAPER_READ", "CONTENT_READ", "CAUSAL_READ")));
     }
 
     @Test

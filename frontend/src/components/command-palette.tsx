@@ -1,9 +1,10 @@
 import {
-  Activity, ArrowRight, BookMarked, ClipboardList, CornerDownLeft, Database, FileText,
-  LayoutDashboard, Network, Search, Shield, Upload, UsersRound,
+  Activity, ArrowRight, BarChart3, BookMarked, ClipboardList, CornerDownLeft, Database, FileText,
+  LayoutDashboard, Network, Search, Shield, Sparkles, Upload, UsersRound,
 } from "lucide-react"
 import { useEffect, useId, useMemo, useRef, useState, type ReactNode } from "react"
 import { paperPath, params, useQuery } from "../api"
+import { variablePath, type CausalNodeSearchHit } from "../causal/types"
 import { usePermissions, type Permission } from "../permissions"
 import { navigate } from "../router"
 import type { JournalDirectory, Page, Paper } from "../types"
@@ -24,7 +25,9 @@ const navTargets: { path: string; label: string; group: string; keywords: string
   { path: "/papers", label: "论文库", group: "工作区导航", keywords: "papers library 文献 检索 导出", icon: FileText, permission: "PAPER_READ" },
   { path: "/jobs", label: "导入与处理", group: "工作区导航", keywords: "jobs tasks zip mineru parse 解析 任务", icon: Upload, permission: "JOB_READ" },
   { path: "/openalex", label: "OpenAlex", group: "工作区导航", keywords: "openalex metadata 书目 匹配 快照", icon: Database, permission: "OPENALEX_MANAGE" },
-  { path: "/causal-graph", label: "因果图谱", group: "工作区导航", keywords: "causal graph claims 因果 主张 图谱", icon: Network, badge: "规划中" },
+  { path: "/causal-graph", label: "因果图谱", group: "知识图谱", keywords: "causal graph claims 因果 主张 图谱 网络", icon: Network, permission: "CAUSAL_READ" },
+  { path: "/causal-fields", label: "领域分析", group: "知识图谱", keywords: "causal fields subfields topics 领域 子领域 主题 方法", icon: BarChart3, permission: "CAUSAL_READ" },
+  { path: "/causal-extraction", label: "因果抽取", group: "知识图谱", keywords: "causal extraction llm 因果 抽取 批次 任务", icon: Sparkles, permission: "CAUSAL_READ" },
   { path: "/system-status", label: "系统状态", group: "系统管理", keywords: "system status health postgres mineru 健康", icon: Activity, permission: "SYSTEM_MANAGE" },
   { path: "/users", label: "用户管理", group: "系统管理", keywords: "users accounts 账号 密码", icon: UsersRound, permission: "SYSTEM_MANAGE" },
   { path: "/roles", label: "角色管理", group: "系统管理", keywords: "roles permissions 权限", icon: Shield, permission: "SYSTEM_MANAGE" },
@@ -56,11 +59,15 @@ export function CommandPalette({ open, onClose }: { open: boolean; onClose: () =
   }, [query, open])
 
   const canReadPapers = can("PAPER_READ")
+  const canReadCausal = can("CAUSAL_READ")
   const journalResults = useQuery<JournalDirectory>(
     open && canReadPapers && debounced.length >= 1 ? "/journals" + params({ q: debounced, size: 4 }) : null,
   )
   const paperResults = useQuery<Page<Paper>>(
     open && canReadPapers && debounced.length >= 2 ? "/papers" + params({ q: debounced, size: 5 }) : null,
+  )
+  const causalVarResults = useQuery<CausalNodeSearchHit[]>(
+    open && canReadCausal && debounced.length >= 2 ? "/causal/search/variables" + params({ q: debounced, limit: 5 }) : null,
   )
 
   const items = useMemo<CommandItem[]>(() => {
@@ -111,8 +118,20 @@ export function CommandPalette({ open, onClose }: { open: boolean; onClose: () =
         })
       }
     }
+    if (canReadCausal && debounced.length >= 2 && causalVarResults.data?.length) {
+      for (const hit of causalVarResults.data) {
+        list.push({
+          id: "causal-var:" + hit.variable,
+          group: "因果变量",
+          label: hit.variable,
+          hint: `${hit.occurrences.toLocaleString()} 条关联因果主张`,
+          icon: <Network size={16} strokeWidth={1.7} aria-hidden="true" />,
+          href: variablePath(hit.variable),
+        })
+      }
+    }
     return list
-  }, [query, debounced, can, canJob, canReadPapers, journalResults.data, paperResults.data])
+  }, [query, debounced, can, canJob, canReadPapers, canReadCausal, journalResults.data, paperResults.data, causalVarResults.data])
 
   useEffect(() => { setActiveIndex(0) }, [items.length, query])
 

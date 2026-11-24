@@ -1,6 +1,7 @@
-import { Archive, ArrowLeft, BookOpen, Check, ClipboardList, Copy, Database, Download, ExternalLink, FileText, ListTree, Pencil, RotateCcw, ScanText, UploadCloud } from "lucide-react"
+import { Archive, ArrowLeft, BookOpen, Check, ClipboardList, Copy, Database, Download, ExternalLink, FileText, ListTree, Network, Pencil, RotateCcw, ScanText, Sparkles, UploadCloud } from "lucide-react"
 import { useState } from "react"
 import { api, dateLabel, errorMessage, jobPath, paperPath, params, useQuery } from "../api"
+import { extractionEntryHref, paperClaimsPath, type CausalPaperSummary } from "../causal/types"
 import { Chip, Empty, JobChip, Loading, Modal, Notice, Pagination, jobKinds } from "../components/shared"
 import { Button } from "../components/ui/button"
 import { SectionHeader } from "../components/workspace"
@@ -114,6 +115,7 @@ export function PaperDetail({ id }: { id: string }) {
             <p className="muted text-sm leading-relaxed">可以使用所选期刊的作品元数据匹配此论文。</p>}
           {canJob("MATCH") && !paper.archived && !paper.matchedWorkId && <Button className="mt-3 w-full" type="button" variant="outline" disabled={busy} onClick={() => start("MATCH")}>匹配论文</Button>}
         </section>
+        {can("CAUSAL_READ") && <CausalPaperCard paper={paper} canExtract={can("CAUSAL_EXTRACT")} />}
       </aside>
     </div>
     {canWrite && dialog === "edit" && <MetadataForm paper={paper} close={() => setDialog(null)} done={changed} />}
@@ -126,6 +128,27 @@ export function PaperDetail({ id }: { id: string }) {
       </div>
     </Modal>}
   </>
+}
+
+function CausalPaperCard({ paper, canExtract }: { paper: Paper; canExtract: boolean }) {
+  const workId = paper.matchedWorkId
+  const summary = useQuery<CausalPaperSummary>(workId ? "/causal/papers/" + encodeURIComponent(workId) + "/summary" : null)
+  const canStart = canExtract && !paper.archived && paper.status === "PUBLISHED" && Boolean(workId)
+  return <section className="panel detail-card">
+    <div className="detail-card-title"><Network size={16} strokeWidth={1.7} aria-hidden="true" /><h2>因果图谱</h2></div>
+    {!workId ? <p className="muted text-sm leading-relaxed">关联 OpenAlex 作品并发布全文后，可发起因果抽取并查看知识图谱主张。</p> :
+      summary.data?.hasClaims ? <div className="small-facts">
+        <div><span>因果主张</span><strong className="tabular-nums">{summary.data.claimRecordCount.toLocaleString()}</strong></div>
+        <div><span>因果关系</span><strong className="tabular-nums">{summary.data.standardClaimCount.toLocaleString()}</strong></div>
+        <div><span>因果变量</span><strong className="tabular-nums">{summary.data.variableCount.toLocaleString()}</strong></div>
+      </div> : <p className="muted text-sm leading-relaxed">{summary.loading ? "正在查询因果主张…" : "该作品尚未入库因果主张。"}</p>}
+    <div className="card-actions">
+      {workId && <Button asChild variant="outline"><a href={paperClaimsPath(workId)}><Network size={14} aria-hidden="true" />查看因果主张</a></Button>}
+      {canStart && <Button asChild variant={summary.data?.hasClaims ? "outline" : "default"}>
+        <a href={extractionEntryHref({ mode: "PAPER_IDS", ids: [paper.paperId] })}><Sparkles size={14} aria-hidden="true" />发起因果抽取</a>
+      </Button>}
+    </div>
+  </section>
 }
 
 function CopyButton({ value, label }: { value: string; label: string }) {
