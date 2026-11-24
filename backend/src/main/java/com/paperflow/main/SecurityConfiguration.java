@@ -79,7 +79,7 @@ class SecurityConfiguration {
                 .headers(headers -> headers.frameOptions(frame -> frame.sameOrigin()))
                 .exceptionHandling(errors -> errors
                         .authenticationEntryPoint((request, response, cause) ->
-                                writeError(response, json, 401, "AUTH_REQUIRED", "请先登录管理端"))
+                                writeError(response, json, 401, "AUTH_REQUIRED", "请先登录"))
                         .accessDeniedHandler((request, response, cause) -> {
                             if (cause instanceof WorkspaceAccess.Denied denial) {
                                 writeError(response, json, 403, denial.code(), denial.getMessage());
@@ -135,6 +135,7 @@ class SecurityConfiguration {
                 .requestMatchers(HEAD, "/api/causal/**").access(access.require(CAUSAL_READ))
                 .requestMatchers("/api/jobs", "/api/jobs/**").access(access.require(JOB_READ))
                 .requestMatchers("/api/papers", "/api/papers/**").access(access.require(PAPER_WRITE))
+                .requestMatchers("/api/client", "/api/client/**").access(access.require(CLIENT_ACCESS))
                 .anyRequest().access(access.require(PAPER_READ));
     }
 

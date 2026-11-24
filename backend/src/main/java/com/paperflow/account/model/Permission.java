@@ -16,10 +16,11 @@ public enum Permission {
     OPENALEX_MANAGE(Group.OPENALEX, "导入元数据、匹配和复核候选", PAPER_READ, JOB_READ),
     CAUSAL_READ(Group.CAUSAL, "查阅因果图谱与领域分析"),
     CAUSAL_EXTRACT(Group.CAUSAL, "执行因果抽取与管理抽取任务", PAPER_READ, CAUSAL_READ),
+    CLIENT_ACCESS(Group.CLIENT, "访问客户端科研工作台"),
     SYSTEM_MANAGE(null, "系统管理");
 
     public enum Group {
-        PAPERS("论文库"), JOBS("导入与处理"), OPENALEX("OpenAlex"), CAUSAL("知识图谱");
+        PAPERS("论文库"), JOBS("导入与处理"), OPENALEX("OpenAlex"), CAUSAL("知识图谱"), CLIENT("客户端");
 
         private final String label;
 

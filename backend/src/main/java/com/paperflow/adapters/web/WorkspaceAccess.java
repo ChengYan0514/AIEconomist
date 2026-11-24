@@ -111,7 +111,7 @@ public final class WorkspaceAccess {
     }
 
     private InsufficientAuthenticationException invalidSession() {
-        return new InsufficientAuthenticationException("请先登录管理端");
+        return new InsufficientAuthenticationException("请先登录");
     }
 
     public static final class Denied extends AccessDeniedException {

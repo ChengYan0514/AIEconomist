@@ -26,7 +26,7 @@ public interface RoleMapper extends Roles {
     }
 
     @Select(COLUMNS + " ORDER BY CASE role_id WHEN 'SYSTEM_ADMIN' THEN 0 WHEN 'DATA_MAINTAINER' THEN 1 "
-            + "WHEN 'READ_ONLY' THEN 2 ELSE 3 END, lower(name), role_id")
+            + "WHEN 'READ_ONLY' THEN 2 WHEN 'RESEARCHER' THEN 3 ELSE 4 END, lower(name), role_id")
     List<RoleRow> roleRows();
 
     @Select(COLUMNS + " WHERE r.role_id = #{id}")

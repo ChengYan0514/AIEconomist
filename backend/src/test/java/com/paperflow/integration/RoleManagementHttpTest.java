@@ -112,7 +112,12 @@ class RoleManagementHttpTest {
         mvc.perform(http.write(delete("/api/roles/READ_ONLY"), admin, null))
                 .andExpect(status().isConflict()).andExpect(jsonPath("$.code").value("BUILT_IN_ROLE"));
         mvc.perform(get("/api/roles/READ_ONLY").session(admin)).andExpect(status().isOk())
-                .andExpect(jsonPath("$.permissions", org.hamcrest.Matchers.containsInAnyOrder("PAPER_READ", "CONTENT_READ", "CAUSAL_READ")));
+                .andExpect(jsonPath("$.permissions", org.hamcrest.Matchers.containsInAnyOrder(
+                        "PAPER_READ", "CONTENT_READ", "CAUSAL_READ", "CLIENT_ACCESS")));
+        mvc.perform(http.write(put("/api/roles/RESEARCHER"), admin, update))
+                .andExpect(status().isConflict()).andExpect(jsonPath("$.code").value("BUILT_IN_ROLE"));
+        mvc.perform(get("/api/roles/RESEARCHER").session(admin)).andExpect(status().isOk())
+                .andExpect(jsonPath("$.permissions", org.hamcrest.Matchers.containsInAnyOrder("CLIENT_ACCESS")));
     }
 
     @Test

@@ -11,18 +11,19 @@
 | 因果事实与发布控制表 | 默认同 `widi_chengyan` schema | 遵循 [ADR 0002](adr/0002-causal-fact-write-boundary.md) 原地共享读写，可通过 `CAUSAL_DB_*`（或 `PAPERFLOW_CAUSAL_JDBC_URL`）覆盖为独立数据源。表结构由独立脚本按 schema owner 维护，应用运行时不执行 DDL。 |
 | OpenAlex 快照 | 同一数据库的 `dataset_20241125` schema | SQL 显式带 schema 名执行只读 `SELECT`。`PAPERFLOW_OPENALEX_SCHEMA` 优先于 `OPENALEX_DB_SCHEMA`，配置校验 schema 名为小写 PostgreSQL 标识符。 |
 
-v2 迁移演进：`V1` 创建基础业务表与 `v2_paper_read` 视图；`V2` 增加审计事件表；`V3` 扩展用户资料、角色与凭据版本；`V4` 引入内置与自定义角色表及外键；`V5` 增加论文处理记录索引；`V6` 扩展因果权限并新增因果抽取控制表与预聚合读模型；`V7` 按 [ADR 0004](adr/0004-consolidate-paper-and-openalex-tables.md) 将历史论文全量收口至 `v2_paper`、改指 `block`/`text_file` 外键、原地复用 `work*` 4 表并移除 `v2_openalex_work`、`v2_openalex_work_topic` 与 `source` 表。[V1 迁移](../backend/src/main/resources/db/migration/V1__paperflow_v2.sql) · [V6 迁移](../backend/src/main/resources/db/migration/V6__causal_workspace.sql) · [V7 迁移](../backend/src/main/resources/db/migration/V7__consolidate_papers_and_openalex.sql) · [因果库 DDL](../backend/src/main/resources/db/causal/V1__causal_facts_and_receipts.sql)
+v2 迁移演进：`V1` 创建基础业务表与 `v2_paper_read` 视图；`V2` 增加审计事件表；`V3` 扩展用户资料、角色与凭据版本；`V4` 引入内置与自定义角色表及外键；`V5` 增加论文处理记录索引；`V6` 扩展因果权限并新增因果抽取控制表与预聚合读模型；`V7` 按 [ADR 0004](adr/0004-consolidate-paper-and-openalex-tables.md) 将历史论文全量收口至 `v2_paper`、改指 `block`/`text_file` 外键、原地复用 `work*` 4 表并移除 `v2_openalex_work`、`v2_openalex_work_topic` 与 `source` 表；`V8` 按 [ADR 0005](adr/0005-client-host-and-external-capability-engines.md) 扩展 `RESEARCHER` 内置角色与 `CLIENT_ACCESS` 权限，并建立客户端引文标注任务与事件表。[V1 迁移](../backend/src/main/resources/db/migration/V1__paperflow_v2.sql) · [V6 迁移](../backend/src/main/resources/db/migration/V6__causal_workspace.sql) · [V7 迁移](../backend/src/main/resources/db/migration/V7__consolidate_papers_and_openalex.sql) · [V8 迁移](../backend/src/main/resources/db/migration/V8__client_workspace.sql) · [因果库 DDL](../backend/src/main/resources/db/causal/V1__causal_facts_and_receipts.sql)
 
 ## 当前数据库对象总览
 
-当前 `widi_chengyan` schema 共包含 **30 张表（含 2 张已停用待删的历史参考表）、1 个视图（`v2_paper_read`）、3 个序列**（`v2_audit_event_event_id_seq`、`claim_table_claim_id_seq`、`paper_claim_table_record_id_seq`），无自定义函数与触发器。按职责与读写边界分为五类：
+当前 `widi_chengyan` schema 共包含 **32 张表（含 2 张已停用待删的历史参考表）、1 个视图（`v2_paper_read`）、4 个序列**（`v2_audit_event_event_id_seq`、`v2_client_citation_event_event_id_seq`、`claim_table_claim_id_seq`、`paper_claim_table_record_id_seq`），无自定义函数与触发器。按职责与读写边界分为五类：
 
 | 归属与边界 | 业务域 | 对象清单 | 职责说明 |
 | --- | --- | --- | --- |
-| **v2 自有（读写，13 表 + 1 视图）** | 账号、角色与审计（3 表） | `v2_admin`、`v2_role`、`v2_audit_event` | 平台用户、内置/自定义角色权限与不可变审计事件 |
+| **v2 自有（读写，15 表 + 1 视图）** | 账号、角色与审计（3 表） | `v2_admin`、`v2_role`、`v2_audit_event` | 平台用户、内置/自定义角色权限与不可变审计事件 |
 | | 论文与新版全文（3 表 + 1 视图） | `v2_paper`、`v2_parse_artifact`、`v2_content_block`、`v2_paper_read`（视图） | 全部论文（含已全量迁入的历史论文）主数据、新版解析产物与内容块，以及单表读视图 |
 | | 常规处理任务（2 表） | `v2_job`、`v2_job_item` | 原件导入、文件解析、全文发布、OpenAlex 元数据导入与匹配任务 |
 | | 因果工作区（4 表） | `v2_causal_batch`、`v2_causal_run`、`v2_causal_edge_index`、`v2_causal_snapshot` | 因果抽取批次与单篇运行记录、因果图谱与领域分析预聚合读模型 |
+| | 客户端工作区（2 表） | `v2_client_citation_task`、`v2_client_citation_event` | 按平台用户隔离的引文标注任务历史、人工审阅结果与阶段事件流 |
 | | 迁移历史（1 表） | `v2_flyway_schema_history` | v2 Flyway 版本管理表 |
 | **OpenAlex 本地作品库（原地读写，4 表）** | 作品、来源、作者与主题（4 表） | `work`、`work_source`、`work_author`、`work_topic` | 从 OpenAlex 快照导入并维护的规范化作品池，供书目匹配、期刊统计与因果学科筛选直接读写 |
 | **因果共享（原地读写，4 表）** | 因果事实与发布控制（4 表） | `claim_table`、`paper_claim_table`、`causal_publication_receipt`、`causal_dataset_revision` | 标准因果关系、论文级因果主张与原文证据、幂等发布回执及数据集版本号 |
@@ -54,10 +55,10 @@ v2 迁移演进：`V1` 创建基础业务表与 `v2_paper_read` 视图；`V2` �
 
 | 列 | 类型与约束 | 用途 |
 | --- | --- | --- |
-| `role_id` | `varchar(43)`，主键 | 固定内置角色 ID（`SYSTEM_ADMIN`、`DATA_MAINTAINER`、`READ_ONLY`）或 `CUSTOM_<uuid>`。 |
+| `role_id` | `varchar(43)`，主键 | 固定内置角色 ID（`SYSTEM_ADMIN`、`DATA_MAINTAINER`、`READ_ONLY`、`RESEARCHER`）或 `CUSTOM_<uuid>`。 |
 | `name` | `varchar(100)`，必填，忽略大小写唯一（`v2_role_name`） | 用户管理与角色管理中展示的角色名称。 |
 | `description` | `varchar(500)`，必填 | 角色说明。 |
-| `permissions` | `text[]`，必填，默认 `'{}'` | 自定义角色的权限集合（允许范围见 `V6` 约束，含常规及因果权限）；内置角色为空数组，权限由应用代码固定定义。 |
+| `permissions` | `text[]`，必填，默认 `'{}'` | 自定义角色的权限集合（允许范围见 `V8` 约束，含常规、因果与客户端权限）；内置角色为空数组，权限由应用代码固定定义。 |
 
 外键 `v2_admin_role_fk` 保护所有已分配给用户的角色不被误删。[角色迁移](../backend/src/main/resources/db/migration/V4__platform_roles.sql) · [角色查询](../backend/src/main/java/com/paperflow/adapters/persistence/RoleMapper.java)
 
@@ -223,6 +224,40 @@ v2 迁移演进：`V1` 创建基础业务表与 `v2_paper_read` 视图；`V2` �
 | `refreshed_at` | `timestamptz`，必填，默认 `now()` | 最近刷新时间。 |
 
 每次发布递增 `causal_dataset_revision` 后后台异步重算 `v2_causal_edge_index` 与 `v2_causal_snapshot`，重启后直接命中持久化快照。[因果读模型存储](../backend/src/main/java/com/paperflow/adapters/persistence/JdbcCausalReadModelStore.java)
+
+### 客户端工作区
+
+#### `v2_client_citation_task`
+
+| 列 | 类型与约束 | 用途 |
+| --- | --- | --- |
+| `task_id` | `uuid`，主键 | 引文标注任务 ID。 |
+| `username` | `varchar(50)`，必填，外键指向 `v2_admin.username` | 任务所属平台用户，用于个人工作区严格隔离。 |
+| `title` | `varchar(160)`，必填 | 任务标题（留空时由正文首句截取）。 |
+| `status`、`stage` | `varchar(20)`、`varchar(32)`，必填 | 任务状态（`QUEUED` / `RUNNING` / `SUCCEEDED` / `FAILED` / `CANCELLED`）与当前阶段。 |
+| `progress` | `double precision`，必填（`0..1`） | 当前执行进度。 |
+| `original_text`、`citation_style` | `text`、`varchar(32)`，必填 | 待标注原文与当前生效引文样式（`apa` / `ieee` / `chicago-author-date` / `mla`）。 |
+| `retrieval_policy` | `jsonb`，必填，默认 `'{}'` | 期刊 `sourceIds` 与年份范围筛选策略。 |
+| `engine_provider`、`engine_run_id` | `varchar(32)`、`varchar(128)` | 执行引擎标识与外部运行 ID。 |
+| `result_payload` | `jsonb` | 结构化引文陈述、本地补全后的候选文献、用户审阅后的 `selectedReferenceIds` 及证据统计。 |
+| `annotated_text`、`bibliography` | `text` | 按当前样式与已选文献生成的带引文正文与参考文献列表。 |
+| `error_code`、`error_message` | `varchar(64)`、`text` | 失败错误码与提示。 |
+| `created_at`、`updated_at`、`finished_at` | `timestamptz` | 创建、最近审阅/更新与终态时间。 |
+
+索引：`v2_client_citation_task_user_recent (username, created_at DESC, task_id DESC)` 与活跃任务部分索引 `v2_client_citation_task_active`。[V8 迁移](../backend/src/main/resources/db/migration/V8__client_workspace.sql) · [客户端契约](openapi-client.yaml)
+
+#### `v2_client_citation_event`
+
+| 列 | 类型与约束 | 用途 |
+| --- | --- | --- |
+| `event_id` | `bigserial`，自增主键 | 有序事件 ID（供 SSE 重放与去重）。 |
+| `task_id` | `uuid`，必填，外键指向 `v2_client_citation_task (task_id) ON DELETE CASCADE` | 所属引文标注任务。 |
+| `stage`、`event_type` | `varchar(32)`，必填 | 阶段代码与事件类型（`STATUS_CHANGED` / `STAGE_STARTED` / `STAGE_COMPLETED` / `WARNING` / `COMPLETED` / `FAILED` / `CANCELLED`）。 |
+| `progress` | `double precision`，必填（`0..1`） | 事件时刻的进度值。 |
+| `message`、`payload` | `text`、`jsonb`，必填 | 面向用户的中文阶段说明与结构化附加详情。 |
+| `occurred_at` | `timestamptz`，必填，默认 `clock_timestamp()` | 事件发生时间。 |
+
+索引：`v2_client_citation_event_task_seq (task_id, event_id ASC)`。
 
 ## `v2_paper_read` 与版本语义
 

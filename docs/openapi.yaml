@@ -1018,8 +1018,8 @@ components:
   schemas:
     UserRole:
       type: string
-      pattern: '^(SYSTEM_ADMIN|DATA_MAINTAINER|READ_ONLY|CUSTOM_[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})$'
-      description: 平台用户唯一分配的角色 ID。内置角色为 SYSTEM_ADMIN、DATA_MAINTAINER、READ_ONLY。
+      pattern: '^(SYSTEM_ADMIN|DATA_MAINTAINER|READ_ONLY|RESEARCHER|CUSTOM_[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})$'
+      description: 平台用户唯一分配的角色 ID。内置角色为 SYSTEM_ADMIN、DATA_MAINTAINER、READ_ONLY、RESEARCHER。
     RoleProfile:
       type: object
       required: [name, description, permissions]
@@ -1032,10 +1032,11 @@ components:
           items: {$ref: '#/components/schemas/BusinessPermission'}
     BusinessPermission:
       type: string
-      enum: [PAPER_READ, CONTENT_READ, PAPER_CSV_EXPORT, PAPER_WRITE, JOB_READ, PDF_PARSE, FULL_TEXT_IMPORT, OPENALEX_MANAGE, CAUSAL_READ, CAUSAL_EXTRACT]
+      enum: [PAPER_READ, CONTENT_READ, PAPER_CSV_EXPORT, PAPER_WRITE, JOB_READ, PDF_PARSE, FULL_TEXT_IMPORT, OPENALEX_MANAGE, CAUSAL_READ, CAUSAL_EXTRACT, CLIENT_ACCESS]
       description: |
         CONTENT_READ 和 PAPER_WRITE 依赖 PAPER_READ。PDF_PARSE 和 FULL_TEXT_IMPORT 依赖 JOB_READ。
         OPENALEX_MANAGE 依赖 PAPER_READ 及 JOB_READ。CAUSAL_EXTRACT 依赖 PAPER_READ 及 CAUSAL_READ。
+        CLIENT_ACCESS 独立授权访问客户端科研工作台（/api/client/**）。
         ZIP 批量导入需要 PAPER_WRITE 和 JOB_READ。CSV 导出单独授权。
     RoleSummary:
       type: object
@@ -1102,16 +1103,17 @@ components:
         temporaryPassword: {type: string, format: password, readOnly: true}
     Permission:
       type: string
-      enum: [PAPER_READ, CONTENT_READ, PAPER_CSV_EXPORT, PAPER_WRITE, JOB_READ, PDF_PARSE, FULL_TEXT_IMPORT, OPENALEX_MANAGE, CAUSAL_READ, CAUSAL_EXTRACT, SYSTEM_MANAGE]
+      enum: [PAPER_READ, CONTENT_READ, PAPER_CSV_EXPORT, PAPER_WRITE, JOB_READ, PDF_PARSE, FULL_TEXT_IMPORT, OPENALEX_MANAGE, CAUSAL_READ, CAUSAL_EXTRACT, CLIENT_ACCESS, SYSTEM_MANAGE]
       description: |
         PAPER_READ 允许查阅论文书目、关联及出版来源。CONTENT_READ 允许读取原件、已发布全文及资源。
         PAPER_CSV_EXPORT 单独授权 CSV 下载。PAPER_WRITE 允许单篇导入、编辑、替换、归档恢复。ZIP 批量导入还需要 JOB_READ。
         JOB_READ 允许读任务。PDF_PARSE、FULL_TEXT_IMPORT 分别允许提交或重试相应任务。
         OPENALEX_MANAGE 允许元数据导入、匹配和候选复核。
         CAUSAL_READ 允许查阅因果图谱、领域分析、论文因果主张及因果抽取批次。CAUSAL_EXTRACT 允许发起、取消、重试因果抽取与下载产物。
+        CLIENT_ACCESS 允许访问客户端科研工作台（/api/client/**，详见 docs/openapi-client.yaml）。
         SYSTEM_MANAGE 仅由内置系统管理员持有，用于管理用户和角色、查看系统状态及审计。
         系统管理员拥有全部权限。数据维护员拥有除 PAPER_CSV_EXPORT 和 SYSTEM_MANAGE 外的权限。
-        只读用户拥有 PAPER_READ、CONTENT_READ 和 CAUSAL_READ。任务提交和重试基于任务类型校验执行及 JOB_READ 权限。
+        只读用户拥有 PAPER_READ、CONTENT_READ、CAUSAL_READ 和 CLIENT_ACCESS。研究者仅拥有 CLIENT_ACCESS。任务提交和重试基于任务类型校验执行及 JOB_READ 权限。
     Page:
       type: object
       required: [items, page, size, total]

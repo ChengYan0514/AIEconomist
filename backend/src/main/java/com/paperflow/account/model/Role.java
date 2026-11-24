@@ -10,11 +10,15 @@ import static com.paperflow.account.model.Permission.*;
 public enum Role {
     SYSTEM_ADMIN(EnumSet.allOf(Permission.class)),
     DATA_MAINTAINER(EnumSet.of(PAPER_READ, CONTENT_READ, PAPER_WRITE, JOB_READ, PDF_PARSE, FULL_TEXT_IMPORT,
-            OPENALEX_MANAGE, CAUSAL_READ, CAUSAL_EXTRACT)),
-    READ_ONLY(EnumSet.of(PAPER_READ, CONTENT_READ, CAUSAL_READ));
+            OPENALEX_MANAGE, CAUSAL_READ, CAUSAL_EXTRACT, CLIENT_ACCESS)),
+    READ_ONLY(EnumSet.of(PAPER_READ, CONTENT_READ, CAUSAL_READ, CLIENT_ACCESS)),
+    RESEARCHER(EnumSet.of(CLIENT_ACCESS));
 
     private static final Map<String, Role> BUILT_IN = Map.of(
-            SYSTEM_ADMIN.name(), SYSTEM_ADMIN, DATA_MAINTAINER.name(), DATA_MAINTAINER, READ_ONLY.name(), READ_ONLY);
+            SYSTEM_ADMIN.name(), SYSTEM_ADMIN,
+            DATA_MAINTAINER.name(), DATA_MAINTAINER,
+            READ_ONLY.name(), READ_ONLY,
+            RESEARCHER.name(), RESEARCHER);
     private static final Pattern CUSTOM_ID = Pattern.compile("CUSTOM_[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}");
     private final Set<Permission> permissions;
 

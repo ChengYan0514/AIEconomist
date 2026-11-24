@@ -60,3 +60,17 @@ paperflow:
     db-schema: ${CAUSAL_DB_SCHEMA:}
     db-user: ${CAUSAL_DB_USER:}
     db-password: ${CAUSAL_DB_PASSWORD:}
+  client:
+    citations:
+      provider: ${PAPERFLOW_CLIENT_CITATIONS_PROVIDER:stub}
+      engine-url: ${PAPERFLOW_CLIENT_CITATIONS_ENGINE_URL:http://127.0.0.1:8000}
+      request-timeout: ${PAPERFLOW_CLIENT_CITATIONS_TIMEOUT:PT10M}
+      poll-interval: ${PAPERFLOW_CLIENT_CITATIONS_POLL_INTERVAL:PT1.5S}
+      max-active-per-user: ${PAPERFLOW_CLIENT_CITATIONS_MAX_ACTIVE:3}
+      max-concurrency: ${PAPERFLOW_CLIENT_CITATIONS_CONCURRENCY:4}
+    qa:
+      enabled: ${PAPERFLOW_CLIENT_QA_ENABLED:false}
+      engine-url: ${PAPERFLOW_CLIENT_QA_ENGINE_URL:}
+    writing:
+      enabled: ${PAPERFLOW_CLIENT_WRITING_ENABLED:false}
+      engine-url: ${PAPERFLOW_CLIENT_WRITING_ENGINE_URL:}
