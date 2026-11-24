@@ -2,7 +2,7 @@
 
 - Status: accepted（补充并局部修订 [ADR 0001](0001-use-existing-paperflow-schema.md)）
 
-ADR 0001 约定新版只写入 `v2_` 前缀表，但既有因果图谱的事实数据（`claim_table`、`paper_claim_table`）、词表（`stw_label`）以及发布控制表（`causal_publication_receipt`、`causal_dataset_revision`）已承载历史因果知识并可能供外部查询共享。我们决定对 ADR 0001 增设明确例外：**因果事实与词表原地接续读写**，同时保留可选 `CAUSAL_DB_*` 独立数据源覆盖（缺省回退 `PAPERFLOW_DB_*`）；而**新版因果抽取批次、单篇运行记录及图谱预聚合读模型**全部写入主库 `v2_` 前缀表（`v2_causal_batch`、`v2_causal_run`、`v2_causal_edge_index`、`v2_causal_snapshot`），由 `v2_flyway_schema_history` 管理。
+ADR 0001 约定新版只写入 `v2_` 前缀表，但既有因果图谱的事实数据（`claim_table`、`paper_claim_table`）以及发布控制表（`causal_publication_receipt`、`causal_dataset_revision`）已承载历史因果知识并可能供外部查询共享。我们决定对 ADR 0001 增设明确例外：**因果事实与发布控制表原地接续读写**，同时保留可选 `CAUSAL_DB_*` 独立数据源覆盖（缺省回退 `PAPERFLOW_DB_*`）；**STW 经济学主题词表为固定静态数据，不导入数据库**，由后端与 `causal-engine` 共用项目内的 `causal-engine/engine/scripts/stw_labels.csv`；而**新版因果抽取批次、单篇运行记录及图谱预聚合读模型**全部写入主库 `v2_` 前缀表（`v2_causal_batch`、`v2_causal_run`、`v2_causal_edge_index`、`v2_causal_snapshot`），由 `v2_flyway_schema_history` 管理。
 
 ## Considered Options
 

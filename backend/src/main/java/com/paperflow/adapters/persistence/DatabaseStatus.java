@@ -30,7 +30,7 @@ public final class DatabaseStatus {
         String sql = """
                 SELECT (SELECT claim_id FROM claim_table LIMIT 1),
                        (SELECT record_id FROM paper_claim_table LIMIT 1),
-                       (SELECT label_en FROM stw_label LIMIT 1),
+                       (SELECT publication_id FROM causal_publication_receipt LIMIT 1),
                        (SELECT revision FROM causal_dataset_revision WHERE id = 1)
                 """;
         try (var connection = causalSource.getConnection(); var statement = connection.createStatement()) {

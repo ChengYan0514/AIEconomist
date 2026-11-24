@@ -15,14 +15,17 @@ public final class CausalGraphService {
     private final CausalFactReader facts;
     private final CausalReadModelStore store;
     private final CausalReadModelRefresher refresher;
+    private final StwVocabulary stwVocabulary;
     private final AuditLog audit;
 
     public CausalGraphService(
-            CausalFactReader facts, CausalReadModelStore store, CausalReadModelRefresher refresher, AuditLog audit
+            CausalFactReader facts, CausalReadModelStore store, CausalReadModelRefresher refresher,
+            StwVocabulary stwVocabulary, AuditLog audit
     ) {
         this.facts = facts;
         this.store = store;
         this.refresher = refresher;
+        this.stwVocabulary = stwVocabulary;
         this.audit = audit;
     }
 
@@ -131,7 +134,7 @@ public final class CausalGraphService {
     public List<String> searchTerms(String query, Integer limit) {
         String q = requireText(query);
         int max = clamp(limit, 10, 1, 50);
-        List<String> terms = facts.searchTerms(q, max);
+        List<String> terms = stwVocabulary.search(q, max);
         if (!terms.isEmpty()) return terms;
         return searchVariables(q, max).stream().map(NodeSearchHit::variable).toList();
     }

@@ -90,8 +90,10 @@ class CausalGraphHttpTest {
                 .andExpect(jsonPath("$.claimRecordCount").value(2))
                 .andExpect(jsonPath("$.hasClaims").value(true));
 
+        mvc.perform(get("/api/causal/search/terms").session(admin).param("q", "fiscal pol"))
+                .andExpect(status().isOk()).andExpect(jsonPath("$[0]").value("Fiscal policy"));
         mvc.perform(get("/api/causal/search/terms").session(admin).param("q", "fis"))
-                .andExpect(status().isOk()).andExpect(jsonPath("$[0]").value("Fiscal Policy"));
+                .andExpect(status().isOk()).andExpect(jsonPath("$[0]").value("Fiscal administration"));
         mvc.perform(get("/api/causal/search/variables").session(admin).param("q", "fis"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$[0].variable").value("Fiscal Policy"))

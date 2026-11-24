@@ -2,6 +2,7 @@ package com.paperflow.main;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.paperflow.adapters.causal.HttpCausalExtractor;
+import com.paperflow.adapters.causal.StwCsvLoader;
 import com.paperflow.adapters.persistence.JdbcCausalBatchStore;
 import com.paperflow.adapters.persistence.JdbcCausalFactReader;
 import com.paperflow.adapters.persistence.JdbcCausalFactWriter;
@@ -12,6 +13,7 @@ import com.paperflow.causal.graph.CausalFactReader;
 import com.paperflow.causal.graph.CausalGraphService;
 import com.paperflow.causal.graph.CausalReadModelRefresher;
 import com.paperflow.causal.graph.CausalReadModelStore;
+import com.paperflow.causal.graph.StwVocabulary;
 import com.zaxxer.hikari.HikariConfig;
 import com.zaxxer.hikari.HikariDataSource;
 import org.springframework.beans.factory.annotation.Value;
@@ -77,10 +79,16 @@ class CausalConfiguration {
     }
 
     @Bean
+    StwVocabulary stwVocabulary() {
+        return StwCsvLoader.loadBundled();
+    }
+
+    @Bean
     CausalGraphService causalGraphService(
-            CausalFactReader facts, CausalReadModelStore store, CausalReadModelRefresher refresher, AuditLog audit
+            CausalFactReader facts, CausalReadModelStore store, CausalReadModelRefresher refresher,
+            StwVocabulary stwVocabulary, AuditLog audit
     ) {
-        return new CausalGraphService(facts, store, refresher, audit);
+        return new CausalGraphService(facts, store, refresher, stwVocabulary, audit);
     }
 
     @Bean

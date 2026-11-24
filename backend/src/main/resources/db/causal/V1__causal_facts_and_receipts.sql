@@ -29,15 +29,9 @@ CREATE TABLE IF NOT EXISTS paper_claim_table (
     created_at timestamp NOT NULL DEFAULT now()
 );
 
-CREATE TABLE IF NOT EXISTS stw_label (
-    stw_id varchar(128),
-    label_en varchar(255) NOT NULL
-);
-
 CREATE UNIQUE INDEX IF NOT EXISTS uq_causal_claim_hash ON claim_table (claim_hash);
 CREATE INDEX IF NOT EXISTS idx_paper_claim_paper_id ON paper_claim_table (paper_id);
 CREATE INDEX IF NOT EXISTS idx_paper_claim_claim_id ON paper_claim_table (claim_id);
-CREATE INDEX IF NOT EXISTS idx_stw_label_en_lower ON stw_label (lower(label_en));
 
 DO $$
 DECLARE

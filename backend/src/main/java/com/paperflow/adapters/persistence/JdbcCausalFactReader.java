@@ -159,13 +159,6 @@ public final class JdbcCausalFactReader implements CausalFactReader {
     }
 
     @Override
-    public List<String> searchTerms(String query, int limit) {
-        if (!Boolean.TRUE.equals(jdbc.queryForObject("SELECT to_regclass('stw_label') IS NOT NULL", Boolean.class))) return List.of();
-        String escaped = escapeLike(query);
-        return jdbc.queryForList(SEARCH_TERMS_SQL, String.class, "%" + escaped + "%", escaped + "%", limit);
-    }
-
-    @Override
     public List<NamedCountRow> listPaperClaimCounts() {
         return jdbc.query("SELECT paper_id, COUNT(*) FROM paper_claim_table GROUP BY paper_id",
                 (rs, i) -> new NamedCountRow(rs.getString(1), rs.getLong(2)));

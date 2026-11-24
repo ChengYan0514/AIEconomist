@@ -64,7 +64,6 @@ CREATE TABLE paper_claim_table (
     statistical_significance varchar(100),
     created_at timestamp NOT NULL DEFAULT now()
 );
-CREATE TABLE stw_label (stw_id varchar(128), label_en varchar(255) NOT NULL);
 CREATE TABLE causal_publication_receipt (
     publication_id varchar(64) PRIMARY KEY, payload_hash varchar(64) NOT NULL,
     work_id varchar(255) NOT NULL, row_count integer NOT NULL, applied_at timestamptz NOT NULL DEFAULT now()
@@ -97,7 +96,6 @@ INSERT INTO paper_claim_table (record_id, paper_id, claim_id, sign_of_impact, ty
     (102, 'W009', 18, 'null_efffect', 'causal', 'Fiscal expansion has no effect on inflation', 'fiscal expansion', 0.910,
      'CPI inflation', 0.850, 'Column 4 coefficient is statistically insignificant.', 'DID', false, 'insignificant');
 SELECT setval(pg_get_serial_sequence('paper_claim_table', 'record_id'), 120, false);
-INSERT INTO stw_label VALUES ('STW1', 'Fiscal Policy'), ('STW2', 'Economic Growth'), ('STW3', 'Inflation'), ('STW4', 'Minimum Wage');
 INSERT INTO causal_dataset_revision VALUES (1, 1, now());
 INSERT INTO openalex_source_search VALUES ('S123');
 INSERT INTO causal_publication VALUES (1);

@@ -855,7 +855,7 @@ paths:
   /causal/search/terms:
     get:
       operationId: searchCausalTerms
-      description: 需要 CAUSAL_READ。检索主题词表，词表为空时回退至当前图谱已有变量名称。
+      description: 需要 CAUSAL_READ。检索项目内置 STW 主题词表，未命中时回退至当前图谱已有变量名称。
       parameters:
         - {name: q, in: query, required: true, schema: {type: string, maxLength: 255}}
         - {name: limit, in: query, schema: {type: integer, minimum: 1, maximum: 50}}

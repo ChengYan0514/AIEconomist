@@ -52,6 +52,18 @@
         </dependency>
     </dependencies>
     <build>
+        <resources>
+            <resource>
+                <directory>src/main/resources</directory>
+            </resource>
+            <resource>
+                <directory>${project.basedir}/../causal-engine/engine/scripts</directory>
+                <includes>
+                    <include>stw_labels.csv</include>
+                </includes>
+                <targetPath>causal</targetPath>
+            </resource>
+        </resources>
         <plugins>
             <plugin>
                 <groupId>org.springframework.boot</groupId>

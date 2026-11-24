@@ -301,7 +301,7 @@ v2 迁移演进：`V1` 创建基础业务表与 `v2_paper_read` 视图；`V2` �
 | `causal_publication_receipt` | `publication_id`（主键，对应 `v2_causal_run.run_id`） | 因果发布幂等回执表，记录 `payload_hash`、`work_id`、`row_count`、`applied_at`，防止重复提交或摘要冲突。 |
 | `causal_dataset_revision` | `id`（主键且 `CHECK (id = 1)`） | 单行数据集版本号表，记录 `revision`、`updated_at`；每次发布递增，用于驱动 `v2_causal_edge_index` 与 `v2_causal_snapshot` 刷新。 |
 
-> 说明：代码另兼容可选的经济学主题词表 `stw_label`（见 [因果库 DDL](../backend/src/main/resources/db/causal/V1__causal_facts_and_receipts.sql)）。当前 `widi_chengyan` schema 中尚未建立该表，词表检索已通过 `to_regclass('stw_label')` 做存在性兜底，未建表时返回空列表。
+> 说明：经济学主题词表（STW）数据固定且不入库，后端与因果抽取引擎共用项目内的 [stw_labels.csv](../causal-engine/engine/scripts/stw_labels.csv)（构建时随 `backend` 打包为 `classpath:causal/stw_labels.csv`），词表检索未命中时自动回退至 `v2_causal_edge_index` 已有变量。
 
 ## 历史 MinerU 全文表（只读保留）
 
