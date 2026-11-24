@@ -121,12 +121,19 @@ public final class CausalGraphService {
     }
 
     public List<NodeSearchHit> searchVariables(String query, Integer limit) {
-        return facts.searchVariables(requireText(query), clamp(limit, 10, 1, 50)).stream()
+        String q = requireText(query);
+        int max = clamp(limit, 10, 1, 50);
+        refresher.summary();
+        return store.searchVariables(q, max).stream()
                 .map(row -> new NodeSearchHit(row.name(), row.count())).toList();
     }
 
     public List<String> searchTerms(String query, Integer limit) {
-        return facts.searchTerms(requireText(query), clamp(limit, 10, 1, 50));
+        String q = requireText(query);
+        int max = clamp(limit, 10, 1, 50);
+        List<String> terms = facts.searchTerms(q, max);
+        if (!terms.isEmpty()) return terms;
+        return searchVariables(q, max).stream().map(NodeSearchHit::variable).toList();
     }
 
     public List<PaperSearchHit> searchPapers(String query, Integer limit) {

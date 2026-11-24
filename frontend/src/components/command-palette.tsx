@@ -25,7 +25,7 @@ const navTargets: { path: string; label: string; group: string; keywords: string
   { path: "/papers", label: "论文库", group: "工作区导航", keywords: "papers library 文献 检索 导出", icon: FileText, permission: "PAPER_READ" },
   { path: "/jobs", label: "导入与处理", group: "工作区导航", keywords: "jobs tasks zip mineru parse 解析 任务", icon: Upload, permission: "JOB_READ" },
   { path: "/openalex", label: "OpenAlex", group: "工作区导航", keywords: "openalex metadata 书目 匹配 快照", icon: Database, permission: "OPENALEX_MANAGE" },
-  { path: "/causal-graph", label: "因果图谱", group: "知识图谱", keywords: "causal graph claims 因果 主张 图谱 网络", icon: Network, permission: "CAUSAL_READ" },
+  { path: "/causal-graph", label: "因果知识图谱", group: "知识图谱", keywords: "causal graph claims 因果 主张 图谱 网络 抽取记录 标准关系", icon: Network, permission: "CAUSAL_READ" },
   { path: "/causal-fields", label: "领域分析", group: "知识图谱", keywords: "causal fields subfields topics 领域 子领域 主题 方法", icon: BarChart3, permission: "CAUSAL_READ" },
   { path: "/causal-extraction", label: "因果抽取", group: "知识图谱", keywords: "causal extraction llm 因果 抽取 批次 任务", icon: Sparkles, permission: "CAUSAL_READ" },
   { path: "/system-status", label: "系统状态", group: "系统管理", keywords: "system status health postgres mineru 健康", icon: Activity, permission: "SYSTEM_MANAGE" },
@@ -124,7 +124,7 @@ export function CommandPalette({ open, onClose }: { open: boolean; onClose: () =
           id: "causal-var:" + hit.variable,
           group: "因果变量",
           label: hit.variable,
-          hint: `${hit.occurrences.toLocaleString()} 条关联因果主张`,
+          hint: `${hit.occurrences.toLocaleString()} 条抽取记录`,
           icon: <Network size={16} strokeWidth={1.7} aria-hidden="true" />,
           href: variablePath(hit.variable),
         })

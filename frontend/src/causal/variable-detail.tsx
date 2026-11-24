@@ -3,7 +3,7 @@ import { useMemo } from "react"
 import { useQuery } from "../api"
 import { Loading, Notice } from "../components/shared"
 import { SectionHeader } from "../components/workspace"
-import { CausalForceGraph, EdgeTable } from "./components"
+import { CausalForceGraph, EdgeTable, TooltipText } from "./components"
 import type { CausalGraphData, CausalNodeDetail } from "./types"
 
 export function CausalVariableDetailPage({ variable }: { variable: string }) {
@@ -32,36 +32,41 @@ export function CausalVariableDetailPage({ variable }: { variable: string }) {
     <SectionHeader
       editorial
       title={variable}
-      description="因果变量的一跳因果网络、学科子领域分布、发表年份趋势及出入边关系明细。"
-      back={<a href="/causal-graph" className="back-link"><ArrowLeft size={14} aria-hidden="true" />返回因果图谱</a>}
+      description="变量详情 · 查看一跳因果网络、领域分布、年份分布及出入边明细。"
+      back={<a href="/causal-graph" className="back-link"><ArrowLeft size={14} aria-hidden="true" />返回因果知识图谱</a>}
     />
     {res.error ? <Notice error>{res.error.message}</Notice> : !detail ? <Loading label="正在加载变量详情…" /> : <>
       <section className="panel causal-kpi-strip causal-kpi-four">
-        <div className="causal-kpi-cell"><span>关联主张总数</span><strong>{detail.totalClaims.toLocaleString()}</strong></div>
-        <div className="causal-kpi-cell"><span>作为原因（出边）</span><strong>{detail.node.asCauseCount.toLocaleString()}</strong></div>
-        <div className="causal-kpi-cell"><span>作为结果（入边）</span><strong>{detail.node.asEffectCount.toLocaleString()}</strong></div>
-        <div className="causal-kpi-cell"><span>主学科子领域</span><strong className="causal-kpi-text" title={detail.node.dominantSubfield || "未标注"}>{detail.node.dominantSubfield || "未标注"}</strong></div>
+        <div className="causal-kpi-cell"><span>总记录</span><strong>{detail.totalClaims.toLocaleString()}</strong></div>
+        <div className="causal-kpi-cell"><span>作为原因</span><strong>{detail.node.asCauseCount.toLocaleString()}</strong></div>
+        <div className="causal-kpi-cell"><span>作为结果</span><strong>{detail.node.asEffectCount.toLocaleString()}</strong></div>
+        <div className="causal-kpi-cell">
+          <span>主领域</span>
+          <TooltipText tip={detail.node.dominantSubfield || "未标注"} underlined={false}>
+            <strong className="causal-kpi-text">{detail.node.dominantSubfield || "未标注"}</strong>
+          </TooltipText>
+        </div>
       </section>
 
       <CausalForceGraph data={localGraph} height={460} highlightNode={detail.node.id} />
 
       <div className="causal-two-col mt-5">
-        <DistributionPanel title="学科子领域分布" entries={Object.entries(detail.subfieldCounts).slice(0, 8)} />
+        <DistributionPanel title="领域分布" entries={Object.entries(detail.subfieldCounts).slice(0, 8)} />
         <DistributionPanel title="发表年份分布" entries={Object.entries(detail.yearCounts)} />
       </div>
 
       <div className="causal-two-col mt-5">
         <section className="panel">
           <div className="panel-bar">
-            <strong>出边 · 作为原因（{detail.outgoing.length}）</strong>
+            <strong>出边（{detail.outgoing.length}）</strong>
           </div>
-          <EdgeTable edges={detail.outgoing} emptyText="该变量暂无作为原因的因果关系" />
+          <EdgeTable edges={detail.outgoing} emptyText="该变量暂无作为原因的关系" />
         </section>
         <section className="panel">
           <div className="panel-bar">
-            <strong>入边 · 作为结果（{detail.incoming.length}）</strong>
+            <strong>入边（{detail.incoming.length}）</strong>
           </div>
-          <EdgeTable edges={detail.incoming} emptyText="该变量暂无作为结果的因果关系" />
+          <EdgeTable edges={detail.incoming} emptyText="该变量暂无作为结果的关系" />
         </section>
       </div>
     </>}

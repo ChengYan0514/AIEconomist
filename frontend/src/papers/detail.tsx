@@ -135,15 +135,15 @@ function CausalPaperCard({ paper, canExtract }: { paper: Paper; canExtract: bool
   const summary = useQuery<CausalPaperSummary>(workId ? "/causal/papers/" + encodeURIComponent(workId) + "/summary" : null)
   const canStart = canExtract && !paper.archived && paper.status === "PUBLISHED" && Boolean(workId)
   return <section className="panel detail-card">
-    <div className="detail-card-title"><Network size={16} strokeWidth={1.7} aria-hidden="true" /><h2>因果图谱</h2></div>
-    {!workId ? <p className="muted text-sm leading-relaxed">关联 OpenAlex 作品并发布全文后，可发起因果抽取并查看知识图谱主张。</p> :
+    <div className="detail-card-title"><Network size={16} strokeWidth={1.7} aria-hidden="true" /><h2>因果知识图谱</h2></div>
+    {!workId ? <p className="muted text-sm leading-relaxed">关联 OpenAlex 作品并发布全文后，可发起因果抽取并查看论文因果声明。</p> :
       summary.data?.hasClaims ? <div className="small-facts">
-        <div><span>因果主张</span><strong className="tabular-nums">{summary.data.claimRecordCount.toLocaleString()}</strong></div>
-        <div><span>因果关系</span><strong className="tabular-nums">{summary.data.standardClaimCount.toLocaleString()}</strong></div>
-        <div><span>因果变量</span><strong className="tabular-nums">{summary.data.variableCount.toLocaleString()}</strong></div>
-      </div> : <p className="muted text-sm leading-relaxed">{summary.loading ? "正在查询因果主张…" : "该作品尚未入库因果主张。"}</p>}
+        <div><span>抽取记录</span><strong className="tabular-nums">{summary.data.claimRecordCount.toLocaleString()}</strong></div>
+        <div><span>标准关系</span><strong className="tabular-nums">{summary.data.standardClaimCount.toLocaleString()}</strong></div>
+        <div><span>变量数</span><strong className="tabular-nums">{summary.data.variableCount.toLocaleString()}</strong></div>
+      </div> : <p className="muted text-sm leading-relaxed">{summary.loading ? "正在查询声明记录…" : "该作品尚未入库声明记录。"}</p>}
     <div className="card-actions">
-      {workId && <Button asChild variant="outline"><a href={paperClaimsPath(workId)}><Network size={14} aria-hidden="true" />查看因果主张</a></Button>}
+      {workId && <Button asChild variant="outline"><a href={paperClaimsPath(workId)}><Network size={14} aria-hidden="true" />查看论文因果声明</a></Button>}
       {canStart && <Button asChild variant={summary.data?.hasClaims ? "outline" : "default"}>
         <a href={extractionEntryHref({ mode: "PAPER_IDS", ids: [paper.paperId] })}><Sparkles size={14} aria-hidden="true" />发起因果抽取</a>
       </Button>}

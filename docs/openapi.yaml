@@ -777,7 +777,7 @@ paths:
   /causal/summary:
     get:
       operationId: causalSummary
-      description: 需要 CAUSAL_READ。返回基于预聚合读模型的因果图谱全库统计、学科子领域、方法列表与数据集修订号。
+      description: 需要 CAUSAL_READ。返回基于预聚合读模型的因果图谱全库统计、当前图谱中有数据的学科子领域（按关联关系数降序）、方法列表与数据集修订号。
       responses:
         '200': {description: 图谱总览摘要, content: {application/json: {schema: {$ref: '#/components/schemas/CausalGraphSummary'}}}}
         '403': {$ref: '#/components/responses/Error'}
@@ -846,7 +846,7 @@ paths:
   /causal/search/variables:
     get:
       operationId: searchCausalVariables
-      description: 需要 CAUSAL_READ。检索图谱因果变量。
+      description: 需要 CAUSAL_READ。基于预聚合索引检索图谱因果变量，按前缀匹配优先及记录数降序返回，供自动补全与全局检索使用。
       parameters:
         - {name: q, in: query, required: true, schema: {type: string, maxLength: 255}}
         - {name: limit, in: query, schema: {type: integer, minimum: 1, maximum: 50}}
@@ -855,12 +855,12 @@ paths:
   /causal/search/terms:
     get:
       operationId: searchCausalTerms
-      description: 需要 CAUSAL_READ。检索 STW 经济学主题词表供自动补全。
+      description: 需要 CAUSAL_READ。检索主题词表，词表为空时回退至当前图谱已有变量名称。
       parameters:
         - {name: q, in: query, required: true, schema: {type: string, maxLength: 255}}
         - {name: limit, in: query, schema: {type: integer, minimum: 1, maximum: 50}}
       responses:
-        '200': {description: STW 标准词列表, content: {application/json: {schema: {type: array, items: {type: string}}}}}
+        '200': {description: 词条列表, content: {application/json: {schema: {type: array, items: {type: string}}}}}
   /causal/search/papers:
     get:
       operationId: searchCausalPapers

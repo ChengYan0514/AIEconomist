@@ -50,6 +50,18 @@ public final class CausalProjectionBuilder {
         return new GraphSummary(overview, subfields, methods, version);
     }
 
+    public static List<String> rankSubfields(List<EdgeIndexRow> edges) {
+        Map<String, Long> counts = new HashMap<>();
+        for (EdgeIndexRow edge : edges) {
+            for (String sf : edge.subfields()) {
+                if (sf != null && !sf.isBlank()) counts.merge(sf.strip(), 1L, Long::sum);
+            }
+        }
+        return counts.entrySet().stream()
+                .sorted(Map.Entry.<String, Long>comparingByValue().reversed().thenComparing(Map.Entry::getKey))
+                .map(Map.Entry::getKey).toList();
+    }
+
     public static GraphData buildGraph(List<EdgeIndexRow> edgeRows, int maxNodes) {
         List<GraphEdge> edges = new ArrayList<>();
         Map<String, long[]> nodeCounts = new LinkedHashMap<>();

@@ -4,7 +4,6 @@ import com.paperflow.causal.graph.CausalFactReader;
 import org.springframework.jdbc.core.JdbcTemplate;
 
 import java.util.List;
-import java.util.Locale;
 
 import static com.paperflow.adapters.persistence.CausalFactSql.*;
 
@@ -160,27 +159,10 @@ public final class JdbcCausalFactReader implements CausalFactReader {
     }
 
     @Override
-    public List<NamedCountRow> searchVariables(String query, int limit) {
-        String pat = "%" + query.toLowerCase(Locale.ROOT) + "%";
-        return jdbc.query("""
-                SELECT variable, SUM(cnt) AS total FROM (
-                    SELECT ct.cause_standard AS variable, COUNT(pct.record_id) AS cnt FROM claim_table ct JOIN paper_claim_table pct ON pct.claim_id = ct.claim_id
-                    WHERE lower(ct.cause_standard) LIKE ? GROUP BY ct.cause_standard
-                    UNION ALL
-                    SELECT ct.effect_standard AS variable, COUNT(pct.record_id) AS cnt FROM claim_table ct JOIN paper_claim_table pct ON pct.claim_id = ct.claim_id
-                    WHERE lower(ct.effect_standard) LIKE ? GROUP BY ct.effect_standard
-                ) h GROUP BY variable ORDER BY total DESC, variable ASC LIMIT ?
-                """, (rs, i) -> new NamedCountRow(rs.getString(1), rs.getLong(2)), pat, pat, limit);
-    }
-
-    @Override
     public List<String> searchTerms(String query, int limit) {
         if (!Boolean.TRUE.equals(jdbc.queryForObject("SELECT to_regclass('stw_label') IS NOT NULL", Boolean.class))) return List.of();
-        String lower = query.toLowerCase(Locale.ROOT);
-        return jdbc.queryForList("""
-                SELECT label_en FROM (SELECT DISTINCT label_en FROM stw_label WHERE lower(label_en) LIKE ?) c
-                ORDER BY CASE WHEN lower(label_en) LIKE ? THEN 0 ELSE 1 END, label_en ASC LIMIT ?
-                """, String.class, "%" + lower + "%", lower + "%", limit);
+        String escaped = escapeLike(query);
+        return jdbc.queryForList(SEARCH_TERMS_SQL, String.class, "%" + escaped + "%", escaped + "%", limit);
     }
 
     @Override

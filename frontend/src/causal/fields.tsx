@@ -44,20 +44,20 @@ export function CausalFieldsPage() {
   return <>
     <SectionHeader
       title="领域分析"
-      description="从学科子领域、细分主题、高频因果关系与实证识别方法分布透视全库经济学因果知识结构。"
-      actions={<Button asChild variant="outline"><a href="/causal-graph"><Network size={15} aria-hidden="true" />探索因果图谱</a></Button>}
+      description="从子领域、主题、高频关系、高频变量与方法分布透视全库经济学因果知识结构。"
+      actions={<Button asChild variant="outline"><a href="/causal-graph"><Network size={15} aria-hidden="true" />因果知识图谱</a></Button>}
     />
     {failure ? <Notice error>{failure.message}</Notice> : !fields || !summary ? <Loading label="正在加载领域分析…" /> : <>
       <section className="panel causal-kpi-strip causal-kpi-four" aria-label="领域分析全库统计">
-        <div className="causal-kpi-cell"><span>因果主张</span><strong>{summary.overview.totalClaimRecords.toLocaleString()}</strong></div>
-        <div className="causal-kpi-cell"><span>因果关系</span><strong>{summary.overview.totalStandardClaims.toLocaleString()}</strong></div>
-        <div className="causal-kpi-cell"><span>覆盖论文</span><strong>{summary.overview.totalPapers.toLocaleString()}</strong></div>
-        <div className="causal-kpi-cell"><span>因果变量</span><strong>{summary.overview.totalNodes.toLocaleString()}</strong></div>
+        <div className="causal-kpi-cell"><span>抽取记录</span><strong>{summary.overview.totalClaimRecords.toLocaleString()}</strong></div>
+        <div className="causal-kpi-cell"><span>标准关系</span><strong>{summary.overview.totalStandardClaims.toLocaleString()}</strong></div>
+        <div className="causal-kpi-cell"><span>论文数</span><strong>{summary.overview.totalPapers.toLocaleString()}</strong></div>
+        <div className="causal-kpi-cell"><span>变量数</span><strong>{summary.overview.totalNodes.toLocaleString()}</strong></div>
       </section>
 
       <div className="causal-insights-grid mt-5">
         <section className="panel">
-          <div className="panel-bar"><strong>高频因果关系（Top {fields.insights.topRelations.length}）</strong></div>
+          <div className="panel-bar"><strong>高频关系（Top {fields.insights.topRelations.length}）</strong></div>
           <div className="causal-insight-list">
             {fields.insights.topRelations.length === 0 ? <p className="muted m-0">暂无高频关系</p> :
               fields.insights.topRelations.map((rel) => (
@@ -66,7 +66,7 @@ export function CausalFieldsPage() {
                     {rel.cause} → {rel.effect}
                   </a>
                   <span className="muted text-xs tabular-nums">
-                    {rel.claimRecordCount.toLocaleString()} 条主张 · {rel.paperCount.toLocaleString()} 篇论文 · {rel.methodCount} 种方法
+                    {rel.claimRecordCount.toLocaleString()} 条抽取记录 · {rel.paperCount.toLocaleString()} 篇论文 · {rel.methodCount} 种方法
                   </span>
                 </div>
               ))}
@@ -74,7 +74,7 @@ export function CausalFieldsPage() {
         </section>
 
         <section className="panel">
-          <div className="panel-bar"><strong>高频因果变量（Top {fields.insights.topVariables.length}）</strong></div>
+          <div className="panel-bar"><strong>高频变量（Top {fields.insights.topVariables.length}）</strong></div>
           <div className="causal-insight-list">
             {fields.insights.topVariables.length === 0 ? <p className="muted m-0">暂无高频变量</p> :
               fields.insights.topVariables.map((v) => (
@@ -87,7 +87,7 @@ export function CausalFieldsPage() {
         </section>
 
         <section className="panel">
-          <div className="panel-bar"><strong>识别方法分布（Top 10 + 其他）</strong></div>
+          <div className="panel-bar"><strong>方法分布（Top 10 + 其他）</strong></div>
           <div className="causal-bars-body">
             {fields.insights.methodCounts.length === 0 ? <p className="muted m-0">暂无方法统计</p> :
               fields.insights.methodCounts.map((m) => {
@@ -109,29 +109,29 @@ export function CausalFieldsPage() {
 
       <section className="panel mt-5">
         <div className="panel-bar causal-fields-bar">
-          <strong>学科子领域与主题明细（{filtered.length}）</strong>
+          <strong>领域明细（{filtered.length}）</strong>
           <div className="causal-fields-filters">
             <label className="search-box">
               <Search size={14} aria-hidden="true" />
-              <input className="field" type="search" aria-label="筛选学科子领域" placeholder="筛选学科子领域…"
+              <input className="field" type="search" aria-label="筛选子领域" placeholder="筛选子领域"
                 value={subfieldQuery} onChange={(e) => { setSubfieldQuery(e.target.value); setPage(0) }} />
             </label>
             <label className="search-box">
               <Search size={14} aria-hidden="true" />
-              <input className="field" type="search" aria-label="筛选细分主题" placeholder="筛选细分主题…"
+              <input className="field" type="search" aria-label="筛选主题" placeholder="筛选主题"
                 value={topicQuery} onChange={(e) => { setTopicQuery(e.target.value); setPage(0) }} />
             </label>
           </div>
         </div>
-        {pageRows.length === 0 ? <Empty title="没有匹配的学科子领域或主题" /> : <>
-          <div className="table-scroll" tabIndex={0} role="region" aria-label="学科子领域与主题明细表">
+        {pageRows.length === 0 ? <Empty title="没有匹配的子领域或主题" /> : <>
+          <div className="table-scroll" tabIndex={0} role="region" aria-label="领域明细表">
             <table className="data-table">
               <thead><tr>
-                <th scope="col">学科子领域</th>
-                <th scope="col">细分主题</th>
+                <th scope="col">子领域</th>
+                <th scope="col">主题</th>
                 <th scope="col" className="text-right">
                   <button type="button" className="causal-sort-btn" onClick={() => toggleSort("claimRecordCount")}>
-                    因果主张数<ArrowUpDown size={12} aria-hidden="true" />
+                    声明记录数<ArrowUpDown size={12} aria-hidden="true" />
                   </button>
                 </th>
                 <th scope="col" className="text-right">
@@ -141,7 +141,7 @@ export function CausalFieldsPage() {
                 </th>
                 <th scope="col" className="text-right">
                   <button type="button" className="causal-sort-btn" onClick={() => toggleSort("variableCount")}>
-                    因果变量数<ArrowUpDown size={12} aria-hidden="true" />
+                    变量数<ArrowUpDown size={12} aria-hidden="true" />
                   </button>
                 </th>
               </tr></thead>

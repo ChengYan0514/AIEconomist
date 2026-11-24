@@ -92,8 +92,14 @@ class CausalGraphHttpTest {
 
         mvc.perform(get("/api/causal/search/terms").session(admin).param("q", "fis"))
                 .andExpect(status().isOk()).andExpect(jsonPath("$[0]").value("Fiscal Policy"));
+        mvc.perform(get("/api/causal/search/variables").session(admin).param("q", "fis"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$[0].variable").value("Fiscal Policy"))
+                .andExpect(jsonPath("$[0].occurrences").value(2));
         mvc.perform(get("/api/causal/search/variables").session(admin).param("q", "growth"))
                 .andExpect(status().isOk()).andExpect(jsonPath("$[0].variable").value("Economic Growth"));
+        mvc.perform(get("/api/causal/search/variables").session(admin).param("q", "%"))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.length()").value(0));
         mvc.perform(get("/api/causal/search/papers").session(admin).param("q", "Legacy"))
                 .andExpect(status().isOk()).andExpect(jsonPath("$[0].workId").value("W009"));
     }

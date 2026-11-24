@@ -29,7 +29,15 @@ const SKIP_LABELS: Record<string, string> = {
   ACTIVE_EXTRACTION: "已有活跃抽取",
 }
 
-export function BatchStatusChip({ status }: { status: CausalBatchView["status"] }) {
+export function BatchStatusChip({ status, zeroClaimPapers = 0, total = 0 }: {
+  status: CausalBatchView["status"]
+  zeroClaimPapers?: number
+  total?: number
+}) {
+  if (status === "SUCCEEDED" && zeroClaimPapers > 0) {
+    const label = total > 0 && zeroClaimPapers === total ? "已完成（未抽到关系）" : "已完成（部分论文未抽到关系）"
+    return <span className="status-chip status-amber"><span className="status-dot" aria-hidden="true" />{label}</span>
+  }
   const [label, tone] = BATCH_STATUS[status] ?? [status, "neutral"]
   return <span className={"status-chip status-" + tone}><span className="status-dot" aria-hidden="true" />{label}</span>
 }
@@ -130,50 +138,50 @@ export function CausalExtractionPage() {
   return <>
     <SectionHeader
       title="因果抽取"
-      description="选定已关联 OpenAlex 且完成全文发布的论文，由因果抽取引擎执行两阶段抽取、STW 映射并受控发布至知识图谱。"
+      description="选择已匹配 Work 且已完成全文发布的论文。原始变量入库保持原流水线默认规则；标准变量入库使用映射结果。两种模式均保留原始证据与阶段产物。"
       actions={<>
         <Button type="button" variant="outline" onClick={batches.reload}><RefreshCw size={14} aria-hidden="true" />刷新列表</Button>
-        <Button asChild variant="outline"><a href="/causal-graph"><Network size={15} aria-hidden="true" />查看因果图谱</a></Button>
+        <Button asChild variant="outline"><a href="/causal-graph"><Network size={15} aria-hidden="true" />因果知识图谱</a></Button>
       </>}
     />
     {error && <div className="mb-4"><Notice error>{error}</Notice></div>}
 
     {canExtract && <section className="panel causal-create-panel mb-5">
       <div className="panel-bar">
-        <div className="panel-title"><Sparkles size={16} strokeWidth={1.7} aria-hidden="true" /><strong>创建因果抽取批次</strong></div>
-        <span className="muted text-sm">单批上限 500 篇 · 先预估确认可执行论文数</span>
+        <div className="panel-title"><Sparkles size={16} strokeWidth={1.7} aria-hidden="true" /><strong>创建因果抽取任务</strong></div>
+        <span className="muted text-sm">单任务上限 500 篇 · 先预估确认可执行论文数</span>
       </div>
       <div className="causal-create-body">
         <div className="causal-create-row">
           <label>
-            <span>目标选择方式</span>
-            <select className="field" aria-label="目标选择方式" value={mode} onChange={(e) => setMode(e.target.value as CausalTargetMode)}>
-              <option value="PAPER_IDS">指定论文 ID</option>
-              <option value="WORK_IDS">指定 OpenAlex 作品 ID</option>
-              <option value="SOURCE_IDS">指定出版来源（期刊）</option>
-              <option value="FILTER">按条件筛选论文</option>
+            <span>目标范围</span>
+            <select className="field" aria-label="目标范围" value={mode} onChange={(e) => setMode(e.target.value as CausalTargetMode)}>
+              <option value="PAPER_IDS">指定论文</option>
+              <option value="WORK_IDS">指定 Work</option>
+              <option value="SOURCE_IDS">指定 Source</option>
+              <option value="FILTER">筛选结果</option>
             </select>
           </label>
           <label>
-            <span>入库变量模式</span>
-            <select className="field" aria-label="入库变量模式" value={ingestionMode} onChange={(e) => setIngestionMode(e.target.value as CausalIngestionMode)}>
-              <option value="RAW">原始变量入库（默认兼容）</option>
-              <option value="STANDARDIZED">STW 标准变量入库</option>
+            <span>入库模式</span>
+            <select className="field" aria-label="入库模式" value={ingestionMode} onChange={(e) => setIngestionMode(e.target.value as CausalIngestionMode)}>
+              <option value="RAW">原始变量入库（默认）</option>
+              <option value="STANDARDIZED">标准变量入库</option>
             </select>
           </label>
         </div>
 
         {mode === "FILTER" ? <div className="causal-filter-grid">
-          <label><span>关键词</span><input className="field" placeholder="标题或论文 ID" value={q} onChange={(e) => setQ(e.target.value)} /></label>
-          <label><span>出版来源</span><SourceField value={sourceId} change={setSourceId} placeholder="搜索出版来源" /></label>
-          <label><span>起始年份</span><input className="field" type="number" min={1000} max={9999} placeholder="如 2015" value={yearFrom} onChange={(e) => setYearFrom(e.target.value)} /></label>
-          <label><span>结束年份</span><input className="field" type="number" min={1000} max={9999} placeholder="如 2024" value={yearTo} onChange={(e) => setYearTo(e.target.value)} /></label>
+          <label><span>论文搜索</span><input className="field" placeholder="标题、作者或论文 ID" value={q} onChange={(e) => setQ(e.target.value)} /></label>
+          <label><span>Source ID</span><SourceField value={sourceId} change={setSourceId} placeholder="搜索出版来源" /></label>
+          <label><span>起始年份</span><input className="field" type="number" min={1000} max={9999} placeholder="起始年份" value={yearFrom} onChange={(e) => setYearFrom(e.target.value)} /></label>
+          <label><span>结束年份</span><input className="field" type="number" min={1000} max={9999} placeholder="结束年份" value={yearTo} onChange={(e) => setYearTo(e.target.value)} /></label>
         </div> : mode === "SOURCE_IDS" ? <div className="causal-create-row">
           <label><span>选择出版来源</span><SourceField value={sourceId} change={setSourceId} placeholder="搜索并选择出版来源" /></label>
-          <label><span>或追加多个来源 ID（可选，换行分隔）</span><textarea className="field" rows={2} placeholder="S123456" value={idsText} onChange={(e) => setIdsText(e.target.value)} /></label>
+          <label><span>或追加多个 Source ID（可选，换行分隔）</span><textarea className="field" rows={2} placeholder="S123456" value={idsText} onChange={(e) => setIdsText(e.target.value)} /></label>
         </div> : <label>
-          <span>{mode === "PAPER_IDS" ? "目标论文 ID（每行一个，最多 500 篇）" : "目标 OpenAlex 作品 ID（每行一个，如 W123456）"}</span>
-          <textarea className="field mono" rows={3} placeholder="每行或逗号分隔一个 ID" value={idsText} onChange={(e) => setIdsText(e.target.value)} />
+          <span>{mode === "PAPER_IDS" ? "目标 ID（每行一个，最多 500 篇）" : "目标 Work ID（每行一个，如 W123456）"}</span>
+          <textarea className="field mono" rows={3} placeholder="每行一个 ID，最多 500 篇" value={idsText} onChange={(e) => setIdsText(e.target.value)} />
         </label>}
 
         <div className="causal-filter-actions">
@@ -181,18 +189,18 @@ export function CausalExtractionPage() {
             <Calculator size={14} aria-hidden="true" />预估目标
           </Button>
           <Button type="button" disabled={busy || !estimate?.enabled || !estimate.executableCount} onClick={createBatch}>
-            <Play size={14} aria-hidden="true" />创建抽取批次
+            <Play size={14} aria-hidden="true" />创建任务
           </Button>
         </div>
 
         {estimate && <div className={"causal-estimate-box" + (estimate.enabled ? "" : " is-warn")}>
           {estimate.enabled ? <>
-            <strong>预估命中 {estimate.targetTotal} 篇，可执行 {estimate.executableCount} 篇</strong>
+            <strong>目标 {estimate.targetTotal} 篇，可执行 {estimate.executableCount} 篇</strong>
             <span className="muted text-sm">
-              引擎配置 {estimate.engineVersion} · 入库模式 {estimate.ingestionMode === "RAW" ? "原始变量" : "STW 标准变量"} · 单篇调用上限 {estimate.maxCalls} 次
+              配置版本 {estimate.engineVersion} · 入库模式 {estimate.ingestionMode === "RAW" ? "原始变量（默认）" : "标准变量"} · 任务调用上限 {estimate.maxCalls} 次
             </span>
           </> : <>
-            <strong>因果抽取执行尚未启用</strong>
+            <strong>因果抽取尚未开启，请完成模型与数据库部署配置</strong>
             <span className="muted text-sm">请先部署 `causal-engine` 服务并配置 `PAPERFLOW_CAUSAL_ENABLED=true`。</span>
           </>}
           {Object.keys(estimate.skipReasons).length > 0 && <div className="causal-skip-pills">
@@ -206,31 +214,29 @@ export function CausalExtractionPage() {
 
     <section className="panel">
       <div className="panel-bar">
-        <strong>因果抽取批次记录</strong>
-        {batches.data && <span className="muted text-sm tabular-nums">共 {batches.data.total.toLocaleString()} 个批次</span>}
+        <strong>因果抽取任务列表</strong>
+        {batches.data && <span className="muted text-sm tabular-nums">共 {batches.data.total.toLocaleString()} 个任务</span>}
       </div>
       {batches.error ? <div className="p-5"><Notice error>{batches.error.message}</Notice></div> :
-        !batches.data ? <Loading label="正在加载批次记录…" /> :
-          batches.data.items.length === 0 ? <Empty title="暂无因果抽取批次">可在上方创建新批次，或从论文详情、论文库勾选栏与期刊目录发起。</Empty> : <>
-            <div className="table-scroll" tabIndex={0} role="region" aria-label="因果抽取批次列表">
+        !batches.data ? <Loading label="正在加载任务列表…" /> :
+          batches.data.items.length === 0 ? <Empty title="暂无因果抽取任务">可在上方创建新任务，或从论文详情、论文库勾选栏与期刊目录发起。</Empty> : <>
+            <div className="table-scroll" tabIndex={0} role="region" aria-label="因果抽取任务列表">
               <table className="data-table">
                 <thead><tr>
-                  <th scope="col">批次 ID</th>
+                  <th scope="col">任务</th>
                   <th scope="col">状态</th>
                   <th scope="col">入库模式</th>
-                  <th scope="col">论文进度与主张产出</th>
+                  <th scope="col">结果</th>
                   <th scope="col">模型调用</th>
                   <th scope="col">创建时间</th>
                 </tr></thead>
                 <tbody>{batches.data.items.map((batch) => <tr key={batch.batchId}>
                   <td className="mono"><a className="inline-link" href={extractionBatchPath(batch.batchId)}>{batch.batchId.slice(0, 8)}…</a></td>
-                  <td><BatchStatusChip status={batch.status} /></td>
-                  <td><span className="role-pill">{batch.ingestionMode === "RAW" ? "原始变量" : "标准变量"}</span></td>
+                  <td><BatchStatusChip status={batch.status} zeroClaimPapers={batch.zeroClaimPapers} total={batch.total} /></td>
+                  <td><span className="role-pill">{batch.ingestionMode === "RAW" ? "原始变量（默认）" : "标准变量"}</span></td>
                   <td className="tabular-nums text-sm">
-                    完成 {batch.succeeded}/{batch.total} 篇 · 产出 <strong>{batch.totalClaims}</strong> 条主张
-                    {batch.zeroClaimPapers > 0 && <span className="muted">（{batch.zeroClaimPapers} 篇未抽到主张）</span>}
-                    {batch.failed > 0 && <span className="text-danger"> · 失败 {batch.failed}</span>}
-                    {batch.skipped > 0 && <span className="muted"> · 跳过 {batch.skipped}</span>}
+                    <div>处理完成 {batch.succeeded} 篇 / 失败 {batch.failed} 篇 / 跳过 {batch.skipped} 篇 / 总计 {batch.total} 篇</div>
+                    <div className="muted">因果关系 <strong>{batch.totalClaims}</strong> 条；未抽到关系 {batch.zeroClaimPapers} 篇</div>
                   </td>
                   <td className="tabular-nums">{batch.callsUsed.toLocaleString()}</td>
                   <td className="table-date">{dateLabel(batch.createdAt)}</td>

@@ -1,5 +1,6 @@
 package com.paperflow.adapters.persistence;
 
+import com.paperflow.causal.graph.CausalFactReader.NamedCountRow;
 import com.paperflow.causal.graph.CausalReadModelStore;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.transaction.support.TransactionTemplate;
@@ -59,8 +60,8 @@ public final class JdbcCausalReadModelStore implements CausalReadModelStore {
         params.add(query.minDiversity());
         if (query.minPaperCount() != null) { sql.append(" AND paper_count >= ?"); params.add(query.minPaperCount()); }
         if (query.query() != null) {
-            sql.append(" AND (lower(cause_standard) LIKE ? OR lower(effect_standard) LIKE ?)");
-            String like = "%" + query.query().toLowerCase(Locale.ROOT) + "%";
+            sql.append(" AND (lower(cause_standard) LIKE ? ESCAPE '\\' OR lower(effect_standard) LIKE ? ESCAPE '\\')");
+            String like = "%" + CausalFactSql.escapeLike(query.query()) + "%";
             params.add(like);
             params.add(like);
         }
@@ -76,7 +77,25 @@ public final class JdbcCausalReadModelStore implements CausalReadModelStore {
                 stringList(rs.getArray(11)), rs.getLong(12)), params.toArray());
     }
 
-    @Override public List<String> listKnownSubfields() { return metaQuery.listKnownSubfields(); }
+    @Override
+    public List<NamedCountRow> searchVariables(String query, int limit) {
+        String escaped = CausalFactSql.escapeLike(query);
+        String contains = "%" + escaped + "%";
+        String prefix = escaped + "%";
+        return jdbc.query("""
+                SELECT variable, SUM(cnt) AS total FROM (
+                    SELECT cause_standard AS variable, SUM(record_count) AS cnt FROM v2_causal_edge_index
+                    WHERE lower(cause_standard) LIKE ? ESCAPE '\\' GROUP BY cause_standard
+                    UNION ALL
+                    SELECT effect_standard AS variable, SUM(record_count) AS cnt FROM v2_causal_edge_index
+                    WHERE lower(effect_standard) LIKE ? ESCAPE '\\' GROUP BY effect_standard
+                ) h
+                GROUP BY variable
+                ORDER BY CASE WHEN lower(variable) LIKE ? ESCAPE '\\' THEN 0 ELSE 1 END, total DESC, variable ASC
+                LIMIT ?
+                """, (rs, i) -> new NamedCountRow(rs.getString(1), rs.getLong(2)), contains, contains, prefix, limit);
+    }
+
     @Override public Map<String, WorkMeta> loadWorkMeta(Collection<String> workIds) { return metaQuery.loadWorkMeta(workIds); }
     @Override public Map<String, List<WorkTopicRow>> loadWorkTopics(Collection<String> workIds) { return metaQuery.loadWorkTopics(workIds); }
     @Override public List<WorkMeta> searchWorkMeta(String query, Collection<String> ids, int limit) { return metaQuery.searchWorkMeta(query, ids, limit); }

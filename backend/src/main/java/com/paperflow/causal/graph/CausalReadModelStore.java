@@ -29,7 +29,7 @@ public interface CausalReadModelStore {
     SnapshotRow findSnapshot(String key);
     void replaceReadModel(List<EdgeIndexRow> edges, List<SnapshotRow> snapshots);
     List<EdgeIndexRow> queryEdges(GraphQuery query);
-    List<String> listKnownSubfields();
+    List<CausalFactReader.NamedCountRow> searchVariables(String query, int limit);
     Map<String, WorkMeta> loadWorkMeta(Collection<String> workIds);
     Map<String, List<WorkTopicRow>> loadWorkTopics(Collection<String> workIds);
     List<WorkMeta> searchWorkMeta(String query, Collection<String> candidateWorkIds, int limit);

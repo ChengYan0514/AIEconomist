@@ -30,7 +30,7 @@ const STAGE_LABEL: Record<CausalRunView["stage"], string> = {
 
 function RunStatusChip({ run }: { run: CausalRunView }) {
   if (run.status === "SUCCEEDED" && run.metrics.claimCount === 0) {
-    return <span className="status-chip status-amber"><span className="status-dot" aria-hidden="true" />已完成（未抽到主张）</span>
+    return <span className="status-chip status-amber"><span className="status-dot" aria-hidden="true" />已完成（未抽到关系）</span>
   }
   const map: Record<CausalRunView["status"], [string, string]> = {
     QUEUED: ["排队中", "neutral"],
@@ -84,15 +84,15 @@ export function CausalExtractionDetailPage({ batchId }: { batchId: string }) {
 
   return <>
     <SectionHeader
-      title="因果抽取批次详情"
-      description={batch ? `批次 ${batch.batchId} · 创建于 ${dateLabel(batch.createdAt)}` : batchId}
-      back={<a href="/causal-extraction" className="back-link"><ArrowLeft size={14} aria-hidden="true" />返回因果抽取</a>}
+      title="因果抽取任务"
+      description={batch ? `任务 ${batch.batchId} · 创建于 ${dateLabel(batch.createdAt)}` : batchId}
+      back={<a href="/causal-extraction" className="back-link"><ArrowLeft size={14} aria-hidden="true" />返回任务列表</a>}
       actions={<>
         <span className={"causal-sse-pill" + (liveConnected ? " is-live" : "")}>
           <Radio size={13} aria-hidden="true" />{liveConnected ? "实时推送已连接" : "静态视图"}
         </span>
         {canExtract && batch?.canCancel && <Button type="button" variant="outline" disabled={busy} onClick={() => act("cancel")}>
-          <Square size={14} aria-hidden="true" />取消批次
+          <Square size={14} aria-hidden="true" />取消任务
         </Button>}
         {canExtract && batch?.canRetry && <Button type="button" disabled={busy} onClick={() => act("retry")}>
           <RotateCcw size={14} aria-hidden="true" />重试失败项
@@ -100,18 +100,18 @@ export function CausalExtractionDetailPage({ batchId }: { batchId: string }) {
       </>}
     />
     {error && <div className="mb-4"><Notice error>{error}</Notice></div>}
-    {res.error ? <Notice error>{res.error.message}</Notice> : !res.data || !batch ? <Loading label="正在加载批次详情…" /> : <>
+    {res.error ? <Notice error>{res.error.message}</Notice> : !res.data || !batch ? <Loading label="正在加载任务详情…" /> : <>
       <section className="panel causal-kpi-strip causal-kpi-six mb-4">
-        <div className="causal-kpi-cell"><span>批次状态</span><div><BatchStatusChip status={batch.status} /></div></div>
-        <div className="causal-kpi-cell"><span>入库模式</span><strong>{batch.ingestionMode === "RAW" ? "原始变量" : "标准变量"}</strong></div>
+        <div className="causal-kpi-cell"><span>状态</span><div><BatchStatusChip status={batch.status} zeroClaimPapers={batch.zeroClaimPapers} total={batch.total} /></div></div>
+        <div className="causal-kpi-cell"><span>入库模式</span><strong>{batch.ingestionMode === "RAW" ? "原始变量（默认）" : "标准变量"}</strong></div>
         <div className="causal-kpi-cell"><span>完成 / 总计</span><strong>{batch.succeeded} / {batch.total}</strong></div>
-        <div className="causal-kpi-cell"><span>产出主张</span><strong>{batch.totalClaims.toLocaleString()}</strong></div>
+        <div className="causal-kpi-cell"><span>因果关系</span><strong>{batch.totalClaims.toLocaleString()}</strong></div>
         <div className="causal-kpi-cell"><span>失败 / 跳过</span><strong>{batch.failed} / {batch.skipped}</strong></div>
         <div className="causal-kpi-cell"><span>模型调用</span><strong>{batch.callsUsed.toLocaleString()}</strong></div>
       </section>
 
       {batch.zeroClaimPapers > 0 && <div className="mb-4"><Notice>
-        本批次有 {batch.zeroClaimPapers} 篇论文正常执行完毕但未抽到因果主张。可展开对应行下载 <code>stage1_raw_responses.jsonl</code> 核对模型原始输出。
+        {batch.zeroClaimPapers} 篇论文已完成处理，但模型未抽到因果关系。完成状态表示流程正常结束，不保证有关系产出。可展开论文行下载 <code>stage1_raw_responses.jsonl</code>，查看模型原始响应。
       </Notice></div>}
 
       <section className="panel">
@@ -130,11 +130,11 @@ export function CausalExtractionDetailPage({ batchId }: { batchId: string }) {
               <thead><tr>
                 <th scope="col" className="w-9"><span className="sr-only">展开</span></th>
                 <th scope="col">论文</th>
-                <th scope="col">OpenAlex 作品</th>
+                <th scope="col">Work</th>
                 <th scope="col">状态</th>
-                <th scope="col">当前阶段</th>
-                <th scope="col">主张 / 键覆盖 / 调用</th>
-                <th scope="col">错误信息</th>
+                <th scope="col">阶段</th>
+                <th scope="col">因果关系 / 键冲突覆盖 / 调用</th>
+                <th scope="col">原因</th>
               </tr></thead>
               <tbody>{res.data.runs.map((run) => {
                 const open = expandedRun === run.runId

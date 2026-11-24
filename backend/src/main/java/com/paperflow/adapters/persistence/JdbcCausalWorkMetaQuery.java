@@ -14,20 +14,6 @@ final class JdbcCausalWorkMetaQuery {
         this.jdbc = jdbc;
     }
 
-    List<String> listKnownSubfields() {
-        Set<String> all = new TreeSet<>(jdbc.queryForList("""
-                SELECT DISTINCT subfield_name FROM v2_openalex_work_topic
-                WHERE subfield_name IS NOT NULL AND subfield_name <> ''
-                """, String.class));
-        if (hasTable("work_topic")) {
-            all.addAll(jdbc.queryForList("""
-                    SELECT DISTINCT subfield_name FROM work_topic
-                    WHERE subfield_name IS NOT NULL AND subfield_name <> ''
-                    """, String.class));
-        }
-        return List.copyOf(all);
-    }
-
     Map<String, WorkMeta> loadWorkMeta(Collection<String> workIds) {
         if (workIds == null || workIds.isEmpty()) return Map.of();
         String[] ids = workIds.stream().filter(Objects::nonNull).distinct().toArray(String[]::new);

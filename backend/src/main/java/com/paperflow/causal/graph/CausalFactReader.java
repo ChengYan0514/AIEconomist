@@ -56,7 +56,6 @@ public interface CausalFactReader {
     List<RawClaimRow> listClaimsByCauseEffect(String cause, String effect, int limit);
     List<RawClaimRow> listClaimsByWorkId(String workId);
     PaperSummaryRow findPaperSummary(String workId);
-    List<NamedCountRow> searchVariables(String query, int limit);
     List<String> searchTerms(String query, int limit);
     List<NamedCountRow> listPaperClaimCounts();
 }

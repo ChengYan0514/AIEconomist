@@ -8,6 +8,7 @@ import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.util.Arrays;
 import java.util.List;
+import java.util.Locale;
 
 final class CausalFactSql {
     private static final String NULL_LIST = "('null_efffect','null','null_effect','null effect')";
@@ -43,7 +44,19 @@ final class CausalFactSql {
             (Boolean) rs.getObject(13), rs.getString(14), rs.getString(15), rs.getString(16),
             rs.getBigDecimal(17), rs.getBigDecimal(18), rs.getString(19));
 
+    static final String SEARCH_TERMS_SQL = """
+            SELECT label_en FROM (SELECT DISTINCT label_en FROM stw_label WHERE lower(label_en) LIKE ? ESCAPE '\\') c
+            ORDER BY CASE WHEN lower(label_en) LIKE ? ESCAPE '\\' THEN 0 ELSE 1 END, label_en ASC LIMIT ?
+            """;
+
     private CausalFactSql() {}
+
+    static String escapeLike(String query) {
+        return query.toLowerCase(Locale.ROOT)
+                .replace("\\", "\\\\")
+                .replace("%", "\\%")
+                .replace("_", "\\_");
+    }
 
     static List<String> stringList(ResultSet rs, int index) throws SQLException {
         Array array = rs.getArray(index);

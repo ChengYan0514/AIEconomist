@@ -82,7 +82,7 @@ public final class CausalReadModelRefresher {
             pairs.forEach(p -> allWorks.add(p.workId()));
             var topicsByWork = store.loadWorkTopics(allWorks);
             var indexedEdges = CausalProjectionBuilder.buildEdgeIndex(edgeRows, topicsByWork, revision);
-            var subfields = collectSubfields(indexedEdges, store.listKnownSubfields());
+            var subfields = CausalProjectionBuilder.rankSubfields(indexedEdges);
             var summary = CausalProjectionBuilder.buildSummary(
                     facts.overview(CausalProjectionBuilder.OVERVIEW_MIN_RECORDS), subfields, facts.listMethods(), revision, now);
             var defaultEdges = indexedEdges.stream()
@@ -123,12 +123,6 @@ public final class CausalReadModelRefresher {
         T parsed = read(row.payload(), type);
         cachePut(key, row.revision(), parsed, Instant.now());
         return parsed;
-    }
-
-    private List<String> collectSubfields(List<EdgeIndexRow> edges, List<String> known) {
-        Set<String> merged = new TreeSet<>(known);
-        edges.forEach(e -> merged.addAll(e.subfields()));
-        return List.copyOf(merged);
     }
 
     private long safeRevision() {

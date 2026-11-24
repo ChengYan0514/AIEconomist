@@ -5,6 +5,7 @@ import com.paperflow.causal.extraction.CausalExtractionModels.BlockExportRow;
 import com.paperflow.causal.extraction.CausalPayloadValidator;
 import com.paperflow.causal.graph.CausalFactReader.*;
 import com.paperflow.causal.graph.CausalProjectionBuilder;
+import com.paperflow.causal.graph.CausalReadModelStore.EdgeIndexRow;
 import com.paperflow.causal.graph.CausalReadModelStore.WorkTopicRow;
 import com.paperflow.causal.model.IngestionMode;
 import com.paperflow.causal.model.SignCategory;
@@ -71,6 +72,17 @@ class CausalDomainTest {
         var summary = CausalProjectionBuilder.buildSummary(
                 new OverviewStats(9, 2, 3, 4, 4, 2), List.of("Macroeconomics"), List.of("DID"), 7L, Instant.EPOCH);
         assertThat(summary.version().label()).isEqualTo("revision-7");
+    }
+
+    @Test
+    void ranksSubfieldsByEdgeFrequencyAndExcludesUnused() {
+        var edges = List.of(
+                new EdgeIndexRow(1L, "A", "B", 10, 4, 2, 8, 2, 0, 0, List.of("Public Economics", "Finance"), 1L),
+                new EdgeIndexRow(2L, "B", "C", 5, 2, 1, 5, 0, 0, 0, List.of("Finance", "Labor Economics"), 1L),
+                new EdgeIndexRow(3L, "C", "D", 3, 1, 1, 3, 0, 0, 0, List.of("Finance", "Development Economics"), 1L)
+        );
+        assertThat(CausalProjectionBuilder.rankSubfields(edges))
+                .containsExactly("Finance", "Development Economics", "Labor Economics", "Public Economics");
     }
 
     @Test
