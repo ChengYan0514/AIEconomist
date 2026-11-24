@@ -69,8 +69,8 @@ class PaperJobHistoryHttpTest {
     @Test
     void includesRegisteredImportResultsAndExcludesPreflightOnlyIds() throws Exception {
         jdbc.update("""
-                INSERT INTO original_file (file_id, source_id, year, paper_title, authors)
-                VALUES (?, 'S123', 2024, 'Other title before preview', 'Alice;Bob')
+                INSERT INTO v2_paper (paper_id, legacy, source_id, publication_year, title, authors, file_revision, legacy_status)
+                VALUES (?, true, 'S123', 2024, 'Other title before preview', 'Alice;Bob', 0, 'UNPROCESSED')
                 """, LEGACY_DUPLICATE);
         String knownId = upload("Known duplicate at preflight");
         String jobId = preflight();
@@ -120,7 +120,7 @@ class PaperJobHistoryHttpTest {
 
     private void makeLegacyDuplicateAfterPreflight() throws Exception {
         var edit = json.createObjectNode().put("sourceId", "S123").put("year", 2024)
-                .put("title", "Made duplicate by a legacy edit").put("authors", "Alice;Bob").put("version", 0);
+                .put("title", "Made duplicate by a legacy edit").put("authors", "Alice;Bob").put("version", 1);
         mvc.perform(http.write(patch("/api/papers/{id}", LEGACY_DUPLICATE), admin, edit)).andExpect(status().isOk())
                 .andExpect(jsonPath("$.paperId").value(LEGACY_DUPLICATE));
     }

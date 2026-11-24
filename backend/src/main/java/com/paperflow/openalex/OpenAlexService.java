@@ -12,7 +12,6 @@ import org.springframework.transaction.support.TransactionTemplate;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
-import java.util.Objects;
 import java.util.function.Consumer;
 
 public final class OpenAlexService {
@@ -46,11 +45,15 @@ public final class OpenAlexService {
             if (batch.isEmpty()) return imported;
             var rows = batch.stream().map(work -> new Work(work.workId(), work.year(), work.title(),
                     PaperMetadata.doi(work.doi()), work.authors())).toList();
-            var topics = catalog.snapshotWorkTopics(schema, rows.stream().map(Work::workId).toList());
+            List<String> workIds = rows.stream().map(Work::workId).toList();
+            var authors = catalog.snapshotWorkAuthors(schema, workIds);
+            var topics = catalog.snapshotWorkTopics(schema, workIds);
             transactions.executeWithoutResult(status -> {
                 catalog.lockSource(source);
                 checkClaim.run();
-                catalog.save(source, rows);
+                catalog.saveWorks(rows);
+                catalog.saveWorkSources(source, workIds);
+                if (!authors.isEmpty()) catalog.saveAuthors(authors);
                 if (!topics.isEmpty()) catalog.saveTopics(topics);
             });
             after = batch.get(batch.size() - 1).workId();
@@ -114,9 +117,7 @@ public final class OpenAlexService {
                 var current = papers.lock(id, version);
                 if (confirmCandidate) requireCandidate(current, workId);
                 current.requireActive();
-                String owner = catalog.boundLegacyPaper(workId);
-                if ((current.matchedWorkId() != null && !current.matchedWorkId().equals(workId)) ||
-                        (owner != null && !Objects.equals(owner, id))) throw owned();
+                if (current.matchedWorkId() != null && !current.matchedWorkId().equals(workId)) throw owned();
                 catalog.bind(id, workId);
                 Paper updated = papers.get(id);
                 afterBind.accept(updated);

@@ -73,15 +73,12 @@ class OverviewHttpTest {
 
     private void seedHistoricalPapers() {
         jdbc.update("""
-                INSERT INTO original_file (file_id, original_file_type, deleted_at) VALUES
-                    ('legacy-unprocessed', 'PDF', NULL), ('legacy-ready', 'PDF', NULL),
-                    ('legacy-failed', 'PDF', NULL), ('legacy-unsupported', 'XML', NULL),
-                    ('legacy-archived', 'PDF', now())
-                """);
-        jdbc.update("""
-                INSERT INTO original_file_job (file_id, flag_text, flag_block) VALUES
-                    ('legacy-ready', 2, 0), ('legacy-failed', -1, 0),
-                    ('legacy-unsupported', -2, 0), ('legacy-archived', 2, 1)
+                INSERT INTO v2_paper (paper_id, legacy, file_revision, original_type, archived_at, legacy_status) VALUES
+                    ('legacy-unprocessed', true, 0, 'PDF', NULL, 'UNPROCESSED'),
+                    ('legacy-ready', true, 0, 'PDF', NULL, 'READY'),
+                    ('legacy-failed', true, 0, 'PDF', NULL, 'FAILED'),
+                    ('legacy-unsupported', true, 0, 'XML', NULL, 'UNSUPPORTED'),
+                    ('legacy-archived', true, 0, 'PDF', now(), 'PUBLISHED')
                 """);
     }
 

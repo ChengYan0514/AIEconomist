@@ -57,7 +57,7 @@ class UserLifecycleHttpTest {
         String jobId;
         try (var connection = dataSource.getConnection(); var lock = connection.createStatement()) {
             connection.setAutoCommit(false);
-            lock.execute("LOCK TABLE v2_openalex_work IN ACCESS EXCLUSIVE MODE");
+            lock.execute("LOCK TABLE work IN ACCESS EXCLUSIVE MODE");
             var submitted = mvc.perform(http.write(post("/api/jobs"), old,
                             json.createObjectNode().put("kind", "METADATA").put("sourceId", "S123")))
                     .andExpect(status().isAccepted()).andExpect(jsonPath("$.username").value(username)).andReturn();

@@ -115,7 +115,7 @@ class CausalGraphHttpTest {
             if ("SUCCEEDED".equals(state)) break;
             Thread.sleep(50);
         }
-        assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM v2_openalex_work_topic WHERE work_id = 'W123'", Integer.class))
+        assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM work_topic WHERE work_id = 'W123'", Integer.class))
                 .isEqualTo(1);
     }
 

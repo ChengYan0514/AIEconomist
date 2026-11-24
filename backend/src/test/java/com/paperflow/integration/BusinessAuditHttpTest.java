@@ -112,10 +112,10 @@ class BusinessAuditHttpTest {
                 """);
         try {
             var edit = json.createObjectNode().put("sourceId", "S123").put("year", 2024)
-                    .put("title", "Title that must roll back").put("authors", "Alice;Bob").put("version", 0);
+                    .put("title", "Title that must roll back").put("authors", "Alice;Bob").put("version", 1);
             write(patch("/api/papers/legacy-001"), admin, edit, 500);
             assertThat(getPaper("legacy-001").path("title").asText()).isEqualTo("Legacy paper");
-            assertThat(getPaper("legacy-001").path("version").asLong()).isZero();
+            assertThat(getPaper("legacy-001").path("version").asLong()).isEqualTo(1L);
             assertThat(audit("legacy-001", "PAPER_EDIT", "FAILED", "integration").path("code").asText())
                     .isEqualTo("INTERNAL");
             assertThat(WorkspaceFixture.legacyContents(jdbc)).isEqualTo(legacy);

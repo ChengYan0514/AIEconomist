@@ -115,8 +115,7 @@ final class WorkspaceFixture implements AutoCloseable {
 
     static List<String> legacyContents(JdbcTemplate jdbc) {
         return List.of("original_file", "original_file_job", "text_file", "block", "block_image", "block_table",
-                        "block_equation", "block_footnote", "block_reference", "source", "work", "work_source",
-                        "work_author", "claim_table", "paper_claim_table", "openalex_source_search", "causal_publication")
+                        "block_equation", "block_footnote", "block_reference", "claim_table", "paper_claim_table")
                 .stream().map(table -> jdbc.queryForObject("SELECT jsonb_agg(to_jsonb(t) ORDER BY to_jsonb(t)::text)::text FROM "
                         + table + " t", String.class)).toList();
     }

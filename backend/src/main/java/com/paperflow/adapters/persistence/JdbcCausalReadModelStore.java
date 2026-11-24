@@ -16,10 +16,10 @@ public final class JdbcCausalReadModelStore implements CausalReadModelStore {
     private final TransactionTemplate transactions;
     private final JdbcCausalWorkMetaQuery metaQuery;
 
-    public JdbcCausalReadModelStore(JdbcTemplate jdbc, TransactionTemplate transactions) {
+    public JdbcCausalReadModelStore(JdbcTemplate jdbc, TransactionTemplate transactions, String openalexSchema) {
         this.jdbc = jdbc;
         this.transactions = transactions;
-        this.metaQuery = new JdbcCausalWorkMetaQuery(jdbc);
+        this.metaQuery = new JdbcCausalWorkMetaQuery(jdbc, openalexSchema);
     }
 
     @Override

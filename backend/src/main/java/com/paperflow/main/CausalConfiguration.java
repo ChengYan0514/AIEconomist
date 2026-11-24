@@ -58,8 +58,10 @@ class CausalConfiguration {
     }
 
     @Bean
-    CausalReadModelStore causalReadModelStore(JdbcTemplate mainJdbc, TransactionTemplate transactions) {
-        return new JdbcCausalReadModelStore(mainJdbc, transactions);
+    CausalReadModelStore causalReadModelStore(
+            JdbcTemplate mainJdbc, TransactionTemplate transactions, WorkspaceProperties workspace
+    ) {
+        return new JdbcCausalReadModelStore(mainJdbc, transactions, workspace.openalexSchema());
     }
 
     @Bean

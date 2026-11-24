@@ -3,7 +3,7 @@
 <mapper namespace="com.paperflow.adapters.persistence.JournalMapper">
     <sql id="aggregated">
         SELECT p.source_id,
-               COALESCE(MAX(NULLIF(btrim(p.source_name), '')), MAX(NULLIF(btrim(os.display_name), '')), p.source_id) AS name,
+               COALESCE(MAX(NULLIF(btrim(os.display_name), '')), p.source_id) AS name,
                count(*) FILTER (WHERE NOT p.archived) AS total_papers,
                count(*) FILTER (WHERE p.archived) AS archived_papers,
                count(*) FILTER (WHERE NOT p.archived AND p.status = 'PUBLISHED') AS published_count,
@@ -80,7 +80,7 @@
 
     <select id="get" resultType="com.paperflow.paper.journal.JournalSummary">
         SELECT p.source_id,
-               COALESCE(MAX(NULLIF(btrim(p.source_name), '')), MAX(NULLIF(btrim(os.display_name), '')), p.source_id) AS name,
+               COALESCE(MAX(NULLIF(btrim(os.display_name), '')), p.source_id) AS name,
                count(*) FILTER (WHERE NOT p.archived) AS total_papers,
                count(*) FILTER (WHERE p.archived) AS archived_papers,
                count(*) FILTER (WHERE NOT p.archived AND p.status = 'PUBLISHED') AS published_count,
@@ -99,11 +99,7 @@
     </select>
 
     <select id="importedWorksCount" resultType="long">
-        SELECT count(*) FROM (
-            SELECT work_id FROM v2_openalex_work WHERE source_id = #{sourceId}
-            UNION
-            SELECT work_id FROM work_source WHERE source_id = #{sourceId}
-        ) imported_works
+        SELECT count(*) FROM work_source WHERE source_id = #{sourceId}
     </select>
 
     <select id="years" resultType="com.paperflow.paper.journal.JournalYearStats">

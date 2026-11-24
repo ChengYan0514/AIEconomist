@@ -8,24 +8,22 @@
         ORDER BY (upper(id) = upper(#{q})) DESC, display_name NULLS LAST, id LIMIT 25
     </select>
     <select id="snapshotWorks" resultType="com.paperflow.openalex.Work">
-        WITH selected AS (
-            SELECT DISTINCT w.id, w.publication_year, w.title, w.doi
-            FROM ${schema}.works_locations loc JOIN ${schema}.works w ON w.id = loc.work_id
-            WHERE loc.source_id = #{sourceId} AND loc.work_id &gt; #{after}
-            <if test="yearFrom != null">AND w.publication_year &gt;= #{yearFrom}</if>
-            <if test="yearTo != null">AND w.publication_year &lt;= #{yearTo}</if>
-            ORDER BY w.id LIMIT 500
-        )
-        SELECT s.id AS work_id, s.publication_year AS year, s.title, s.doi,
-               COALESCE((
-                 SELECT string_agg(a.display_name, ';' ORDER BY a.id)
-                 FROM ${schema}.works_authorships wa JOIN ${schema}.authors a ON a.id = wa.author_id
-                 WHERE wa.work_id = s.id
-               ), '') AS authors
-        FROM selected s ORDER BY s.id
+        SELECT DISTINCT w.id AS work_id, w.publication_year AS year, w.title, w.doi, '' AS authors
+        FROM ${schema}.works_locations loc JOIN ${schema}.works w ON w.id = loc.work_id
+        WHERE loc.source_id = #{sourceId} AND loc.work_id &gt; #{after}
+        <if test="yearFrom != null">AND w.publication_year &gt;= #{yearFrom}</if>
+        <if test="yearTo != null">AND w.publication_year &lt;= #{yearTo}</if>
+        ORDER BY w.id LIMIT 500
+    </select>
+    <select id="snapshotWorkAuthors" resultType="com.paperflow.openalex.WorkAuthor">
+        SELECT DISTINCT ON (wa.work_id, wa.author_id) wa.work_id, wa.author_id, a.display_name AS author_name
+        FROM ${schema}.works_authorships wa JOIN ${schema}.authors a ON a.id = wa.author_id
+        WHERE wa.work_id IN
+        <foreach collection="workIds" item="id" open="(" separator="," close=")">#{id}</foreach>
+        ORDER BY wa.work_id, wa.author_id
     </select>
     <select id="snapshotWorkTopics" resultType="com.paperflow.openalex.WorkTopic">
-        SELECT DISTINCT wt.work_id, wt.topic_id, t.display_name AS topic_name,
+        SELECT DISTINCT ON (wt.work_id, wt.topic_id) wt.work_id, wt.topic_id, t.display_name AS topic_name,
                t.field_display_name AS field_name, t.subfield_display_name AS subfield_name,
                t.domain_display_name AS domain_name
         FROM ${schema}.works_topics wt JOIN ${schema}.topics t ON t.id = wt.topic_id
@@ -36,43 +34,53 @@
     <select id="lockSource" resultType="boolean">
         SELECT true FROM pg_advisory_xact_lock(hashtext(current_schema() || ':openalex'), hashtext(#{sourceId}))
     </select>
-    <insert id="save">
-        INSERT INTO v2_openalex_work (source_id, work_id, year, title, doi, authors)
+    <insert id="saveWorks">
+        INSERT INTO work (work_id, publication_year, title, doi)
         VALUES <foreach collection="works" item="w" separator=",">
-            (#{sourceId}, #{w.workId}, #{w.year}, #{w.title}, #{w.doi}, #{w.authors})
+            (#{w.workId}, #{w.year}, #{w.title}, #{w.doi})
         </foreach>
-        ON CONFLICT (source_id, work_id) DO UPDATE SET year = EXCLUDED.year, title = EXCLUDED.title,
-            doi = EXCLUDED.doi, authors = EXCLUDED.authors, imported_at = now()
+        ON CONFLICT (work_id) DO UPDATE SET publication_year = EXCLUDED.publication_year,
+            title = EXCLUDED.title, doi = EXCLUDED.doi
+    </insert>
+    <insert id="saveWorkSources">
+        INSERT INTO work_source (work_id, source_id)
+        VALUES <foreach collection="workIds" item="id" separator=",">
+            (#{id}, #{sourceId})
+        </foreach>
+        ON CONFLICT (work_id, source_id) DO NOTHING
+    </insert>
+    <insert id="saveAuthors">
+        INSERT INTO work_author (work_id, author_id, author_name)
+        VALUES <foreach collection="authors" item="a" separator=",">
+            (#{a.workId}, #{a.authorId}, #{a.authorName})
+        </foreach>
+        ON CONFLICT (work_id, author_id) DO UPDATE SET author_name = EXCLUDED.author_name
     </insert>
     <insert id="saveTopics">
-        INSERT INTO v2_openalex_work_topic (work_id, topic_id, topic_name, field_name, subfield_name, domain_name)
+        INSERT INTO work_topic (work_id, topic_id, topic_name, field_name, subfield_name, domain_name)
         VALUES <foreach collection="topics" item="t" separator=",">
             (#{t.workId}, #{t.topicId}, #{t.topicName}, #{t.fieldName}, #{t.subfieldName}, #{t.domainName})
         </foreach>
         ON CONFLICT (work_id, topic_id) DO UPDATE SET topic_name = EXCLUDED.topic_name,
             field_name = EXCLUDED.field_name, subfield_name = EXCLUDED.subfield_name,
-            domain_name = EXCLUDED.domain_name, imported_at = now()
+            domain_name = EXCLUDED.domain_name
     </insert>
-    <sql id="legacyProjection">
+    <sql id="workProjection">
         SELECT w.work_id, w.publication_year AS year, w.title, w.doi,
             COALESCE((SELECT string_agg(wa.author_name, ';' ORDER BY wa.author_id)
                       FROM work_author wa WHERE wa.work_id = w.work_id), '') AS authors
         FROM work_source ws JOIN work w ON w.work_id = ws.work_id
         WHERE ws.source_id = #{sourceId}
-        AND NOT EXISTS (SELECT 1 FROM v2_openalex_work v WHERE v.source_id = ws.source_id AND v.work_id = w.work_id)
     </sql>
     <select id="byDoi" resultType="com.paperflow.openalex.Work">
-        SELECT work_id, year, title, doi, authors FROM v2_openalex_work WHERE source_id = #{sourceId} AND doi = #{doi}
-        UNION ALL
-        <include refid="legacyProjection"/> AND w.doi = #{doi} ORDER BY work_id
+        <include refid="workProjection"/>
+        AND w.doi IN (#{doi}, 'https://doi.org/' || #{doi})
+        ORDER BY w.work_id
     </select>
     <select id="byYear" resultType="com.paperflow.openalex.Work">
-        SELECT work_id, year, title, doi, authors FROM v2_openalex_work WHERE source_id = #{sourceId} AND year = #{year}
-        UNION ALL
-        <include refid="legacyProjection"/> AND w.publication_year = #{year} ORDER BY work_id
-    </select>
-    <select id="boundLegacyPaper" resultType="string">
-        SELECT file_id FROM original_file_job WHERE matched_work_id = #{workId} LIMIT 1
+        <include refid="workProjection"/>
+        AND w.publication_year = #{year}
+        ORDER BY w.work_id
     </select>
     <update id="bind">
         UPDATE v2_paper SET matched_work_id = #{workId}, record_version = record_version + 1, updated_at = now()

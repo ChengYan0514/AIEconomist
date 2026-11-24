@@ -30,7 +30,7 @@ public final class PaperService {
     }
 
     public Paper get(String id) {
-        Paper paper = papers.get(id);
+        Paper paper = papers.get(openalexSchema, id);
         if (paper == null) throw new PaperNotFound();
         return paper;
     }
@@ -38,14 +38,14 @@ public final class PaperService {
     public Map<String, Paper> getMany(List<String> ids) {
         Map<String, Paper> result = new HashMap<>();
         for (int start = 0; start < ids.size(); start += 500) {
-            papers.getMany(ids.subList(start, Math.min(start + 500, ids.size())))
+            papers.getMany(openalexSchema, ids.subList(start, Math.min(start + 500, ids.size())))
                     .forEach(paper -> result.put(paper.paperId(), paper));
         }
         return result;
     }
 
     public List<Paper> list(PaperFilter filter, long offset, int limit) {
-        return papers.list(filter, offset, limit);
+        return papers.list(openalexSchema, filter, offset, limit);
     }
 
     public long count(PaperFilter filter) {
@@ -53,7 +53,7 @@ public final class PaperService {
     }
 
     public long export(PaperFilter filter, Consumer<Paper> output) {
-        return transactions.execute(status -> papers.export(filter, output));
+        return transactions.execute(status -> papers.export(openalexSchema, filter, output));
     }
 
     public List<String> range(String sourceId, Integer yearFrom, Integer yearTo, int limit) {
@@ -67,7 +67,7 @@ public final class PaperService {
     }
 
     public String duplicate(PaperMetadata metadata) {
-        if (papers.get(metadata.paperId()) != null) return metadata.paperId();
+        if (papers.get(openalexSchema, metadata.paperId()) != null) return metadata.paperId();
         String identity = PaperMetadata.identity(metadata.sourceId(), metadata.year(), metadata.title(), metadata.authors());
         return papers.atSourceYear(metadata.sourceId(), metadata.year()).stream()
                 .filter(row -> identity.equals(PaperMetadata.identity(metadata.sourceId(), metadata.year(), row.title(), row.authors())))
@@ -143,11 +143,9 @@ public final class PaperService {
     public Paper lock(String id, long expectedVersion) {
         Paper before = get(id);
         before.requireCurrent(expectedVersion);
-        if (before.legacy() && before.version() == 0) papers.registerLegacy(id);
         papers.lock(id);
         Paper after = get(id);
-        long version = expectedVersion == 0 ? 1 : expectedVersion;
-        after.requireCurrent(version);
+        after.requireCurrent(expectedVersion);
         return after;
     }
 

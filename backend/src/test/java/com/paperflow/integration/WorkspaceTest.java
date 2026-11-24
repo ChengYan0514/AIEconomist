@@ -71,7 +71,7 @@ class WorkspaceTest {
         mvc.perform(get("/api/papers/legacy-001/blocks").session(session))
                 .andExpect(jsonPath("$.items[0].text").value("Existing published text"));
         mvc.perform(get("/api/papers/legacy-001/file").session(session)).andExpect(content().contentType("application/pdf"));
-        var edit = Map.of("sourceId", "S123", "year", 2024, "title", "Updated legacy title", "authors", "Alice;Bob", "version", 0);
+        var edit = Map.of("sourceId", "S123", "year", 2024, "title", "Updated legacy title", "authors", "Alice;Bob", "version", 1);
         var edited = write(patch("/api/papers/legacy-001"), edit, 200);
         assertThat(edited.path("matchedWorkId").asText()).isEqualTo("W009");
         assertThat(edited.path("paperId").asText()).isEqualTo("legacy-001");
@@ -96,7 +96,7 @@ class WorkspaceTest {
                 source_id,year,paper_title,authors,file_path
                 S123,2021,Batch title,Alice,paper.pdf
                 S123,2021,Missing file,Alice,missing.pdf
-                S123,2024,Legacy paper,Alice;Bob,paper.pdf
+                S123,2024,Updated legacy title,Alice;Bob,paper.pdf
                 """, "paper.pdf", PDF);
         var job = write(multipart("/api/imports").file(new MockMultipartFile("file", "sample.zip", "application/zip", zip)), null, 201);
         assertThat(job.path("ready").asInt()).isEqualTo(1);
@@ -131,6 +131,7 @@ class WorkspaceTest {
                 .andExpect(jsonPath("$[0].sourceId").value("S123"));
         var job = write(post("/api/jobs"), Map.of("kind", "METADATA", "sourceId", "S123", "yearFrom", 2024), 202);
         await(job.path("jobId").asText(), "SUCCEEDED");
+        assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM work_author WHERE work_id = 'W123'", Integer.class)).isEqualTo(2);
         await(start("MATCH", paper), "SUCCEEDED");
         assertThat(getPaper(paper).path("matchedWorkId").asText()).isEqualTo("W123");
         String ambiguous = upload("Ambiguous Study", "10.1/amb");

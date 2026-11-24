@@ -43,9 +43,14 @@ class JournalHttpTest {
                        (repeat('3', 64), false, 'S124', 2023, 'Archived Urban', 'Carol', 1, 'PDF', now())
                 """);
         jdbc.update("""
-                INSERT INTO v2_openalex_work (source_id, work_id, year, title, doi, authors)
-                VALUES ('S124', 'W901', 2022, 'Urban Growth A', NULL, 'Alice'),
-                       ('S124', 'W902', 2023, 'Urban Growth B', NULL, 'Bob')
+                INSERT INTO work (work_id, publication_year, title, doi)
+                VALUES ('W901', 2022, 'Urban Growth A', NULL),
+                       ('W902', 2023, 'Urban Growth B', NULL)
+                """);
+        jdbc.update("""
+                INSERT INTO work_source (work_id, source_id)
+                VALUES ('W901', 'S124'),
+                       ('W902', 'S124')
                 """);
 
         var admin = new WorkspaceHttp(mvc, json).login("integration", "workspace-test-password");
@@ -83,5 +88,9 @@ class JournalHttpTest {
         mvc.perform(get("/api/journals/S999999").session(admin))
                 .andExpect(status().isNotFound())
                 .andExpect(jsonPath("$.code").value("JOURNAL_NOT_FOUND"));
+
+        mvc.perform(get("/api/papers/" + "1".repeat(64)).session(admin))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.sourceName").value("Journal of Urban Economics"));
     }
 }
