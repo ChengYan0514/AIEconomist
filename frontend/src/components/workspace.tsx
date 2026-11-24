@@ -1,5 +1,5 @@
 import {
-  Activity, BarChart3, BookMarked, ChevronDown, ChevronRight, ClipboardList, Database, FileText,
+  Activity, ArrowLeftRight, BarChart3, BookMarked, ChevronDown, ChevronRight, ClipboardList, Database, FileText,
   LayoutDashboard, LogOut, Menu, Network, PanelLeftClose, PanelLeftOpen, Search,
   Shield, ShieldCheck, Sparkles, Upload, UsersRound, X,
 } from "lucide-react"
@@ -185,6 +185,10 @@ export function Workspace({ page, displayName, children, logout }:
           })}
         </nav>
         <div className="sidebar-footer">
+          {can("CLIENT_ACCESS") && <a href="/client/citations" className="admin-client-switch" title={rail ? "进入科研客户端" : undefined}>
+            <ArrowLeftRight size={15} aria-hidden="true" />
+            {!rail && <span>进入科研客户端</span>}
+          </a>}
           <button type="button" className="rail-toggle" onClick={toggleRail}
             aria-label={rail ? "展开侧边栏" : "收起侧边栏"} title={rail ? "展开侧边栏" : "收起侧边栏"}>
             {rail ? <PanelLeftOpen size={16} aria-hidden="true" /> : <><PanelLeftClose size={16} aria-hidden="true" /><span>收起侧栏</span></>}
