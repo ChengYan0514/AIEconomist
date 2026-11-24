@@ -31,8 +31,9 @@ services:
 
   causal-engine:
     build: ./causal-engine
-    profiles: ["causal"]
     restart: unless-stopped
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     ports:
       - "127.0.0.1:${PAPERFLOW_CAUSAL_ENGINE_PORT:-18003}:18003"
     environment:
@@ -46,6 +47,7 @@ services:
       CAUSAL_EMBEDDING_MODEL: ${CAUSAL_EMBEDDING_MODEL:-}
       CAUSAL_EMBEDDING_API_KEY: ${CAUSAL_EMBEDDING_API_KEY:-}
       CAUSAL_ENABLE_THINKING: ${CAUSAL_ENABLE_THINKING:-false}
+      CAUSAL_THINKING_STYLE: ${CAUSAL_THINKING_STYLE:-AUTO}
     volumes:
       - ./var/causal-engine:/data/causal-engine
     healthcheck:

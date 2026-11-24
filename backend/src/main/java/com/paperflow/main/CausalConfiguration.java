@@ -92,8 +92,10 @@ class CausalConfiguration {
     }
 
     @Bean
-    HttpCausalExtractor causalExtractor(CausalProperties causal, ObjectMapper json) {
-        return new HttpCausalExtractor(causal.engineUrl(), json, causal.requestTimeout());
+    HttpCausalExtractor causalExtractor(
+            CausalProperties causal, com.paperflow.settings.ServiceSettingsService settings, ObjectMapper json
+    ) {
+        return new HttpCausalExtractor(settings::current, json, causal.requestTimeout());
     }
 
     @Bean
@@ -120,19 +122,21 @@ class CausalConfiguration {
     CausalBatchRunner causalBatchRunner(
             CausalBatchStore store, CausalExtractor extractor, CausalFactWriter writer,
             CausalPayloadValidator validator, CausalReadModelRefresher readModel,
-            CausalEventHub events, AuditLog audit, ObjectMapper json, CausalProperties causal
+            CausalEventHub events, AuditLog audit, ObjectMapper json,
+            CausalProperties causal, com.paperflow.settings.ServiceSettingsService settings
     ) {
         return new CausalBatchRunner(store, extractor, writer, validator, readModel, events, audit, json,
-                causal.maxConcurrency(), causal.requestTimeout(), causal.maxCalls());
+                causal.maxConcurrency(), causal.requestTimeout(), () -> settings.current().causal().maxCalls());
     }
 
     @Bean
     CausalExtractionService causalExtractionService(
-            CausalBatchStore store, CausalExtractor extractor, CausalBatchRunner runner, CausalEventHub events,
-            AuditLog audit, TransactionTemplate transactions, ObjectMapper json, CausalProperties causal
+            CausalBatchStore store, CausalExtractor extractor, CausalBatchRunner runner, CausalPayloadValidator validator,
+            CausalEventHub events, AuditLog audit, TransactionTemplate transactions, ObjectMapper json,
+            CausalProperties causal, com.paperflow.settings.ServiceSettingsService settings
     ) {
-        return new CausalExtractionService(store, extractor, runner, events, audit, transactions, json,
-                causal.enabled(), causal.defaultMode(), causal.maxCalls(), causal.maxBatchTargets());
+        return new CausalExtractionService(store, extractor, runner, validator, events, audit, transactions, json,
+                () -> settings.current().causal(), causal.maxBatchTargets());
     }
 
     @Bean

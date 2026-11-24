@@ -106,6 +106,7 @@ class SecurityConfiguration {
                 .requestMatchers(DELETE, "/api/session").access(access.session())
                 .requestMatchers(POST, "/api/session/password").access(access.session())
                 .requestMatchers("/api/system-status").access(access.require(SYSTEM_MANAGE))
+                .requestMatchers("/api/service-settings", "/api/service-settings/**").access(access.require(SYSTEM_MANAGE))
                 .requestMatchers(GET, auditPaths).access(access.require(SYSTEM_MANAGE))
                 .requestMatchers(HEAD, auditPaths).access(access.require(SYSTEM_MANAGE))
                 .requestMatchers(auditPaths).denyAll()

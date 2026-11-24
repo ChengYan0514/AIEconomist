@@ -25,6 +25,7 @@ import { PaperDetail } from "./papers/detail"
 import { hasAdminPermission, Permissions, type Session } from "./permissions"
 import { Roles } from "./roles"
 import { useLinkInterceptor, useLocation } from "./router"
+import { ServiceSettingsPage } from "./service-settings"
 import { SystemStatus } from "./system-status"
 import { ResetPasswordNotice, Users, type IssuedPassword } from "./users"
 import "./styles.css"
@@ -117,7 +118,7 @@ function App() {
     section === "jobs" ? "JOB_READ" :
     section === "openalex" ? "OPENALEX_MANAGE" :
     ["causal-graph", "causal-fields", "causal-extraction"].includes(section) ? "CAUSAL_READ" :
-    ["system-status", "users", "roles", "audit"].includes(section) ? "SYSTEM_MANAGE" : undefined
+    ["system-status", "service-settings", "users", "roles", "audit"].includes(section) ? "SYSTEM_MANAGE" : undefined
   const blocked = (!hasAdmin && section !== "overview") ||
     (required && !permissions.includes(required)) ||
     (section === "openalex" && !permissions.includes("JOB_READ"))
@@ -135,6 +136,7 @@ function App() {
     section === "causal-fields" && !id ? <CausalFieldsPage /> :
     section === "causal-extraction" ? id ? <CausalExtractionDetailPage key={id} batchId={decodeURIComponent(id)} /> : <CausalExtractionPage /> :
     section === "system-status" && !id ? <SystemStatus /> :
+    section === "service-settings" && !id ? <ServiceSettingsPage /> :
     section === "users" && !id ? <Users onChange={refresh} onPasswordReset={(issued) => { setReset(issued); refresh() }} /> :
     section === "roles" ? <Roles key={path} id={id && id !== "new" ? decodeURIComponent(id) : undefined} editing={id === "new" || action === "edit"} /> :
     section === "audit" && !id ? <AuditLog /> : <Empty title="找不到此页面"><a href="/overview" className="inline-link">返回总览</a></Empty>

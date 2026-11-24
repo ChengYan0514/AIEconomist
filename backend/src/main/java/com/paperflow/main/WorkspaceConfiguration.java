@@ -54,8 +54,8 @@ class WorkspaceConfiguration {
     }
 
     @Bean
-    PdfParser pdfParser(FileStorage files, ObjectMapper json, WorkspaceProperties config) {
-        return new MineruTasks(files, json, config.mineruUrl(), config.mineruTimeout(), config.mineruTier());
+    PdfParser pdfParser(FileStorage files, ObjectMapper json, com.paperflow.settings.ServiceSettingsService settings) {
+        return new MineruTasks(files, json, () -> settings.current().mineru());
     }
 
     @Bean

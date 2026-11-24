@@ -68,6 +68,42 @@ public class CausalExtractionController {
         return service.retry(actor.getName(), batchId);
     }
 
+    @GetMapping("/extractions/{batchId}/review")
+    List<RunReviewDraft> getBatchReview(@PathVariable UUID batchId) {
+        return service.getBatchReviewDrafts(batchId);
+    }
+
+    @PostMapping("/extractions/{batchId}/review")
+    Map<String, Object> submitBatchReview(
+            @PathVariable UUID batchId,
+            @RequestBody SubmitBatchReviewRequest request,
+            Principal actor
+    ) {
+        service.submitBatchReview(actor.getName(), batchId, request == null ? List.of() : request.runs());
+        return Map.of("batchId", batchId, "status", "SUBMITTED");
+    }
+
+    @GetMapping("/runs/{runId}/review")
+    RunReviewDraft getRunReview(@PathVariable UUID runId) {
+        return service.getRunReviewDraft(runId);
+    }
+
+    @PostMapping("/runs/{runId}/review")
+    Map<String, Object> submitRunReview(
+            @PathVariable UUID runId,
+            @RequestBody SubmitRunReviewRequest request,
+            Principal actor
+    ) {
+        service.submitRunReview(actor.getName(), runId, request == null ? List.of() : request.claims());
+        return Map.of("runId", runId, "status", "PUBLISHED");
+    }
+
+    @DeleteMapping("/runs/{runId}/review")
+    Map<String, Object> dismissRunReview(@PathVariable UUID runId, Principal actor) {
+        service.dismissRunReview(actor.getName(), runId);
+        return Map.of("runId", runId, "status", "CANCELLED");
+    }
+
     @GetMapping("/runs/{runId}/artifacts")
     List<ArtifactInfo> artifacts(@PathVariable UUID runId) throws IOException, InterruptedException {
         return service.artifacts(runId);

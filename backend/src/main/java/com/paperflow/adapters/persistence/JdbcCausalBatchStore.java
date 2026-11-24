@@ -14,11 +14,11 @@ import java.util.UUID;
 
 public final class JdbcCausalBatchStore implements CausalBatchStore {
     private static final String RUN_COLS = """
-            run_id, batch_id, paper_id, work_id, source_id, input_hash, engine_run_id, status, stage, metrics::text
+            run_id, batch_id, paper_id, work_id, source_id, input_hash, engine_run_id, status, stage, metrics::text, draft_payload::text
             """;
     private static final RowMapper<RunRow> RUN_ROW = (rs, i) -> new RunRow(
             rs.getObject(1, UUID.class), rs.getObject(2, UUID.class), rs.getString(3), rs.getString(4), rs.getString(5),
-            rs.getString(6), rs.getString(7), RunStatus.valueOf(rs.getString(8)), RunStage.valueOf(rs.getString(9)), rs.getString(10));
+            rs.getString(6), rs.getString(7), RunStatus.valueOf(rs.getString(8)), RunStage.valueOf(rs.getString(9)), rs.getString(10), rs.getString(11));
 
     private final JdbcTemplate jdbc;
     private final JdbcCausalBatchQuery query;
@@ -40,9 +40,9 @@ public final class JdbcCausalBatchStore implements CausalBatchStore {
     @Override public long countRunViews(UUID batchId, String statusFilter) { return query.countRunViews(batchId, statusFilter); }
 
     @Override
-    public void createBatch(UUID batchId, IngestionMode mode, String scopeJson, String configJson, List<RunRow> runs) {
-        jdbc.update("INSERT INTO v2_causal_batch (batch_id, ingestion_mode, scope, config_snapshot) VALUES (?, ?, CAST(? AS jsonb), CAST(? AS jsonb))",
-                batchId, mode.name(), scopeJson, configJson);
+    public void createBatch(UUID batchId, IngestionMode mode, com.paperflow.causal.model.ReviewPolicy reviewPolicy, String scopeJson, String configJson, List<RunRow> runs) {
+        jdbc.update("INSERT INTO v2_causal_batch (batch_id, ingestion_mode, review_policy, scope, config_snapshot) VALUES (?, ?, ?, CAST(? AS jsonb), CAST(? AS jsonb))",
+                batchId, mode.name(), reviewPolicy.name(), scopeJson, configJson);
         for (RunRow run : runs) {
             jdbc.update("""
                     INSERT INTO v2_causal_run (run_id, batch_id, paper_id, work_id, source_id, status, stage, metrics)
@@ -54,9 +54,10 @@ public final class JdbcCausalBatchStore implements CausalBatchStore {
 
     @Override
     public BatchRow findBatch(UUID batchId) {
-        var rows = jdbc.query("SELECT batch_id, ingestion_mode, scope::text, config_snapshot::text, cancelled FROM v2_causal_batch WHERE batch_id = ?",
+        var rows = jdbc.query("SELECT batch_id, ingestion_mode, review_policy, scope::text, config_snapshot::text, cancelled FROM v2_causal_batch WHERE batch_id = ?",
                 (rs, i) -> new BatchRow(rs.getObject(1, UUID.class), IngestionMode.valueOf(rs.getString(2)),
-                        rs.getString(3), rs.getString(4), rs.getBoolean(5)), batchId);
+                        com.paperflow.causal.model.ReviewPolicy.valueOf(rs.getString(3)),
+                        rs.getString(4), rs.getString(5), rs.getBoolean(6)), batchId);
         return rows.isEmpty() ? null : rows.get(0);
     }
 
@@ -73,7 +74,7 @@ public final class JdbcCausalBatchStore implements CausalBatchStore {
 
     @Override
     public List<RunRow> listActiveRuns(UUID batchId) {
-        return jdbc.query("SELECT " + RUN_COLS + " FROM v2_causal_run WHERE batch_id = ? AND status IN ('QUEUED','RUNNING','PUBLISHING')", RUN_ROW, batchId);
+        return jdbc.query("SELECT " + RUN_COLS + " FROM v2_causal_run WHERE batch_id = ? AND status IN ('QUEUED','RUNNING','PENDING_REVIEW','PUBLISHING')", RUN_ROW, batchId);
     }
 
     @Override
@@ -94,8 +95,14 @@ public final class JdbcCausalBatchStore implements CausalBatchStore {
     }
 
     @Override
+    public void markPendingReview(UUID runId, String draftPayloadJson, String metricsJson) {
+        jdbc.update("UPDATE v2_causal_run SET status = 'PENDING_REVIEW', stage = 'PUBLISH', draft_payload = CAST(? AS jsonb), metrics = CAST(? AS jsonb), updated_at = now() WHERE run_id = ? AND status = 'RUNNING'",
+                draftPayloadJson, metricsJson, runId);
+    }
+
+    @Override
     public void markPublishing(UUID runId, String metricsJson) {
-        jdbc.update("UPDATE v2_causal_run SET status = 'PUBLISHING', stage = 'PUBLISH', metrics = CAST(? AS jsonb), updated_at = now() WHERE run_id = ? AND status = 'RUNNING'",
+        jdbc.update("UPDATE v2_causal_run SET status = 'PUBLISHING', stage = 'PUBLISH', metrics = CAST(? AS jsonb), updated_at = now() WHERE run_id = ? AND status IN ('RUNNING', 'PENDING_REVIEW')",
                 metricsJson, runId);
     }
 
@@ -112,9 +119,14 @@ public final class JdbcCausalBatchStore implements CausalBatchStore {
     }
 
     @Override
+    public void dismissReview(UUID runId) {
+        jdbc.update("UPDATE v2_causal_run SET status = 'CANCELLED', updated_at = now(), finished_at = now() WHERE run_id = ? AND status = 'PENDING_REVIEW'", runId);
+    }
+
+    @Override
     public boolean cancelBatch(UUID batchId) {
         if (jdbc.update("UPDATE v2_causal_batch SET cancelled = true WHERE batch_id = ? AND NOT cancelled AND finished_at IS NULL", batchId) == 0) return false;
-        jdbc.update("UPDATE v2_causal_run SET status = 'CANCELLED', updated_at = now(), finished_at = now() WHERE batch_id = ? AND status IN ('QUEUED','RUNNING')", batchId);
+        jdbc.update("UPDATE v2_causal_run SET status = 'CANCELLED', updated_at = now(), finished_at = now() WHERE batch_id = ? AND status IN ('QUEUED','RUNNING','PENDING_REVIEW')", batchId);
         return true;
     }
 
@@ -130,7 +142,17 @@ public final class JdbcCausalBatchStore implements CausalBatchStore {
         jdbc.update("""
                 UPDATE v2_causal_batch b SET finished_at = now()
                 WHERE b.batch_id = ? AND b.finished_at IS NULL
-                  AND NOT EXISTS (SELECT 1 FROM v2_causal_run r WHERE r.batch_id = b.batch_id AND r.status IN ('QUEUED','RUNNING','PUBLISHING'))
+                  AND NOT EXISTS (SELECT 1 FROM v2_causal_run r WHERE r.batch_id = b.batch_id AND r.status IN ('QUEUED','RUNNING','PENDING_REVIEW','PUBLISHING'))
                 """, batchId);
+    }
+
+    @Override
+    public List<RunReviewDraft> listPendingReviewDrafts(UUID batchId) {
+        return query.listPendingReviewDrafts(batchId);
+    }
+
+    @Override
+    public RunReviewDraft getRunReviewDraft(UUID runId) {
+        return query.getRunReviewDraft(runId);
     }
 }

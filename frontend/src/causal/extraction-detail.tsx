@@ -1,4 +1,4 @@
-import { ArrowLeft, ChevronDown, ChevronRight, Download, Radio, RotateCcw, Square } from "lucide-react"
+import { ArrowLeft, CheckSquare, ChevronDown, ChevronRight, Download, Radio, RotateCcw, Square } from "lucide-react"
 import { Fragment, useEffect, useState } from "react"
 import { api, dateLabel, errorMessage, paperPath, useQuery } from "../api"
 import { Empty, Loading, Notice, Pagination } from "../components/shared"
@@ -6,10 +6,12 @@ import { Button } from "../components/ui/button"
 import { SectionHeader } from "../components/workspace"
 import { usePermissions } from "../permissions"
 import { BatchStatusChip } from "./extraction"
-import { paperClaimsPath, type CausalArtifact, type CausalBatchDetail, type CausalRunView } from "./types"
+import { ReviewWorkbenchModal } from "./review-workbench"
+import { paperClaimsPath, type CausalArtifact, type CausalBatchDetail, type CausalRunView, type RunReviewDraft } from "./types"
 
 const RUN_STATUS_FILTER = [
   ["", "全部"],
+  ["PENDING_REVIEW", "待审核"],
   ["RUNNING", "运行中"],
   ["PUBLISHING", "发布中"],
   ["QUEUED", "排队中"],
@@ -35,6 +37,7 @@ function RunStatusChip({ run }: { run: CausalRunView }) {
   const map: Record<CausalRunView["status"], [string, string]> = {
     QUEUED: ["排队中", "neutral"],
     RUNNING: ["运行中", "blue"],
+    PENDING_REVIEW: ["待审核", "amber"],
     PUBLISHING: ["发布中", "blue"],
     SUCCEEDED: ["已完成", "green"],
     SKIPPED: ["已跳过", "neutral"],
@@ -54,6 +57,8 @@ export function CausalExtractionDetailPage({ batchId }: { batchId: string }) {
   const [error, setError] = useState("")
   const [liveConnected, setLiveConnected] = useState(false)
   const [expandedRun, setExpandedRun] = useState<string | null>(null)
+  const [reviewDrafts, setReviewDrafts] = useState<RunReviewDraft[] | null>(null)
+  const [isBatchReview, setIsBatchReview] = useState(false)
   const size = 20
 
   const query = `/causal/extractions/${encodeURIComponent(batchId)}?page=${page}&size=${size}`
@@ -82,6 +87,47 @@ export function CausalExtractionDetailPage({ batchId }: { batchId: string }) {
     }
   }
 
+  async function openBatchReview() {
+    setBusy(true); setError("")
+    try {
+      const drafts = await api<RunReviewDraft[]>(`/causal/extractions/${encodeURIComponent(batchId)}/review`)
+      setReviewDrafts(drafts)
+      setIsBatchReview(true)
+    } catch (err) {
+      setError(errorMessage(err))
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  async function openSingleReview(runId: string) {
+    setBusy(true); setError("")
+    try {
+      const draft = await api<RunReviewDraft>(`/causal/runs/${encodeURIComponent(runId)}/review`)
+      setReviewDrafts([draft])
+      setIsBatchReview(false)
+    } catch (err) {
+      setError(errorMessage(err))
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  async function submitReviewData(updatedDrafts: RunReviewDraft[]) {
+    if (isBatchReview) {
+      await api(`/causal/extractions/${encodeURIComponent(batchId)}/review`, {
+        method: "POST",
+        body: JSON.stringify({ runs: updatedDrafts }),
+      })
+    } else if (updatedDrafts[0]) {
+      await api(`/causal/runs/${encodeURIComponent(updatedDrafts[0].runId)}/review`, {
+        method: "POST",
+        body: JSON.stringify({ claims: updatedDrafts[0].claims }),
+      })
+    }
+    reload()
+  }
+
   return <>
     <SectionHeader
       title="因果抽取任务"
@@ -91,6 +137,9 @@ export function CausalExtractionDetailPage({ batchId }: { batchId: string }) {
         <span className={"causal-sse-pill" + (liveConnected ? " is-live" : "")}>
           <Radio size={13} aria-hidden="true" />{liveConnected ? "实时推送已连接" : "静态视图"}
         </span>
+        {canExtract && (batch?.pendingReview ?? 0) > 0 && <Button type="button" onClick={openBatchReview} disabled={busy}>
+          <CheckSquare size={14} aria-hidden="true" />人工审核 ({batch?.pendingReview} 篇待审核)
+        </Button>}
         {canExtract && batch?.canCancel && <Button type="button" variant="outline" disabled={busy} onClick={() => act("cancel")}>
           <Square size={14} aria-hidden="true" />取消任务
         </Button>}
@@ -153,7 +202,14 @@ export function CausalExtractionDetailPage({ batchId }: { batchId: string }) {
                     <td className="mono">
                       {run.workId ? <a className="inline-link" href={paperClaimsPath(run.workId)}>{run.workId}</a> : "—"}
                     </td>
-                    <td><RunStatusChip run={run} /></td>
+                    <td>
+                      <RunStatusChip run={run} />
+                      {canExtract && run.status === "PENDING_REVIEW" && (
+                        <Button type="button" size="sm" variant="outline" className="ml-2 text-xs py-0.5 px-1.5" onClick={() => openSingleReview(run.runId)}>
+                          审核入库
+                        </Button>
+                      )}
+                    </td>
                     <td><span className="role-pill">{STAGE_LABEL[run.stage] ?? run.stage}</span></td>
                     <td className="tabular-nums text-sm">
                       <strong>{run.metrics.claimCount}</strong> / {run.metrics.collisionCount} / {run.metrics.callsUsed}
@@ -171,6 +227,14 @@ export function CausalExtractionDetailPage({ batchId }: { batchId: string }) {
         </>}
       </section>
     </>}
+    {reviewDrafts && (
+      <ReviewWorkbenchModal
+        drafts={reviewDrafts}
+        isBatch={isBatchReview}
+        onClose={() => setReviewDrafts(null)}
+        onSubmit={submitReviewData}
+      />
+    )}
   </>
 }
 

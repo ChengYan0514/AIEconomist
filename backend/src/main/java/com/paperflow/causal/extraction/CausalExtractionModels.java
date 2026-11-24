@@ -24,7 +24,7 @@ public final class CausalExtractionModels {
             String engineVersion, String ingestionMode, int maxCalls, int maxBatchTargets
     ) {}
 
-    public record CreateBatchRequest(TargetSpec target, String ingestionMode) {}
+    public record CreateBatchRequest(TargetSpec target, String ingestionMode, String reviewPolicy) {}
 
     public record TargetCandidate(
             String paperId, String workId, String sourceId, String title, String skipReason
@@ -46,12 +46,28 @@ public final class CausalExtractionModels {
             boolean hasArtifacts, Instant updatedAt, Instant finishedAt
     ) {}
 
+    public record EditableClaimItem(
+            String claimId, String cause, String effect, String typeOfRelationship,
+            String signOfImpact, boolean isMainContribution, String statisticalSignificance,
+            String causalInferenceMethod, String sourcesOfExogenousVariation,
+            String levelOfTentativeness, String evidenceMethodOtherDescription, String evidence
+    ) {}
+
+    public record RunReviewDraft(
+            UUID runId, UUID batchId, String paperId, String workId, String paperTitle,
+            String status, List<EditableClaimItem> claims
+    ) {}
+
+    public record SubmitRunReviewRequest(List<EditableClaimItem> claims) {}
+
+    public record SubmitBatchReviewRequest(List<RunReviewDraft> runs) {}
+
     public record CausalBatchView(
-            UUID batchId, String ingestionMode, String status, boolean cancelled,
+            UUID batchId, String ingestionMode, String reviewPolicy, String status, boolean cancelled,
             Map<String, Object> scope, Map<String, Object> configSnapshot,
-            int total, int queued, int running, int publishing, int succeeded, int zeroClaimPapers,
+            int total, int queued, int running, int pendingReview, int publishing, int succeeded, int zeroClaimPapers,
             int skipped, int failed, int cancelledCount, int totalClaims, int callsUsed,
-            boolean canCancel, boolean canRetry, Instant createdAt, Instant finishedAt
+            boolean canCancel, boolean canRetry, boolean canReview, Instant createdAt, Instant finishedAt
     ) {}
 
     public record CausalBatchDetail(

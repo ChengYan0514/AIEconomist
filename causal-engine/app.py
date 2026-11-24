@@ -3,6 +3,8 @@ from __future__ import annotations
 
 import csv
 import hashlib
+import inspect
+import ipaddress
 import json
 import os
 import shutil
@@ -14,6 +16,7 @@ import uuid
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from typing import Any
+from urllib.parse import urlparse
 
 import yaml
 from fastapi import FastAPI, HTTPException
@@ -60,6 +63,27 @@ class BlockInput(BaseModel):
     blockSeq: int
 
 
+class ChatModelOverride(BaseModel):
+    baseUrl: str | None = None
+    model: str | None = None
+    apiKey: str | None = None
+    clearApiKey: bool = False
+    enableThinking: bool = False
+    thinkingStyle: str = "AUTO"
+
+
+class EmbeddingModelOverride(BaseModel):
+    baseUrl: str | None = None
+    model: str | None = None
+    apiKey: str | None = None
+    clearApiKey: bool = False
+
+
+class ModelConfigOverride(BaseModel):
+    chat: ChatModelOverride | None = None
+    embedding: EmbeddingModelOverride | None = None
+
+
 class RunRequest(BaseModel):
     runId: str
     workId: str
@@ -67,9 +91,69 @@ class RunRequest(BaseModel):
     maxCalls: int = Field(default=DEFAULT_MAX_CALLS, ge=1, le=50000)
     resumeEngineRunId: str | None = None
     blocks: list[BlockInput]
+    modelConfig: ModelConfigOverride | None = None
 
 
-def _load_effective_config() -> dict[str, Any]:
+def _is_local_host(host: str) -> bool:
+    if not host:
+        return False
+    if host in ("localhost", "host.docker.internal") or host.endswith(".local"):
+        return True
+    try:
+        ip = ipaddress.ip_address(host)
+        return ip.is_loopback or ip.is_private
+    except ValueError:
+        return False
+
+
+def resolve_thinking_extra_body(
+    base_url: str,
+    model: str,
+    enable_thinking: bool,
+    thinking_style: str = "AUTO",
+) -> dict[str, Any]:
+    style = (thinking_style or "AUTO").strip().upper()
+    if style == "AUTO":
+        parsed = urlparse(base_url or "")
+        host = (parsed.hostname or "").lower()
+        port = parsed.port
+        m = (model or "").lower()
+        if any(d in host for d in ("deepseek.com", "volces.com", "bigmodel.cn")):
+            style = "THINKING_OBJECT"
+        elif any(d in host for d in ("dashscope.aliyuncs.com", "siliconflow.", "modelscope.")):
+            style = "ENABLE_THINKING"
+        elif port == 11434 or "ollama" in host:
+            style = "OLLAMA_THINK"
+        elif "openai.com" in host or "generativelanguage.googleapis.com" in host:
+            if any(m.startswith(p) for p in ("o1", "o3", "o4", "gpt-5", "gemini-2.5", "gemini-3")):
+                style = "REASONING_EFFORT"
+            else:
+                style = "NONE"
+        elif _is_local_host(host):
+            style = "CHAT_TEMPLATE_KWARGS"
+        elif any(k in m for k in ("deepseek", "glm-4.5", "glm-4.6", "glm-5")):
+            style = "THINKING_OBJECT"
+        elif any(k in m for k in ("qwen3", "qwen-3", "qwq")):
+            style = "ENABLE_THINKING"
+        else:
+            style = "NONE"
+
+    if style == "NONE":
+        return {}
+    if style == "THINKING_OBJECT":
+        return {"thinking": {"type": "enabled" if enable_thinking else "disabled"}}
+    if style == "ENABLE_THINKING":
+        return {"enable_thinking": bool(enable_thinking)}
+    if style == "CHAT_TEMPLATE_KWARGS":
+        return {"chat_template_kwargs": {"enable_thinking": bool(enable_thinking)}}
+    if style == "OLLAMA_THINK":
+        return {"think": bool(enable_thinking)}
+    if style == "REASONING_EFFORT":
+        return {"reasoning_effort": "medium" if enable_thinking else "none"}
+    return {}
+
+
+def _load_effective_config(model_override: ModelConfigOverride | None = None) -> dict[str, Any]:
     cfg = yaml.safe_load(CONFIG_TEMPLATE.read_text(encoding="utf-8"))
     chat = cfg.setdefault("models", {}).setdefault("chat", {})
     emb = cfg["models"].setdefault("embedding", {})
@@ -77,15 +161,71 @@ def _load_effective_config() -> dict[str, Any]:
         chat["base_url"] = os.environ["CAUSAL_CHAT_BASE_URL"]
     if os.environ.get("CAUSAL_CHAT_MODEL"):
         chat["model"] = os.environ["CAUSAL_CHAT_MODEL"]
-    if os.environ.get("CAUSAL_ENABLE_THINKING", "").lower() == "false":
-        chat.setdefault("extra_body", {}).setdefault("chat_template_kwargs", {})["enable_thinking"] = False
     if os.environ.get("CAUSAL_EMBEDDING_BASE_URL"):
         emb["base_url"] = os.environ["CAUSAL_EMBEDDING_BASE_URL"]
     if os.environ.get("CAUSAL_EMBEDDING_MODEL"):
         emb["model"] = os.environ["CAUSAL_EMBEDDING_MODEL"]
+
+    enable_thinking = os.environ.get("CAUSAL_ENABLE_THINKING", "false").strip().lower() == "true"
+    thinking_style = os.environ.get("CAUSAL_THINKING_STYLE", "AUTO").strip().upper() or "AUTO"
+
+    if model_override and model_override.chat:
+        co = model_override.chat
+        if co.baseUrl and co.baseUrl.strip():
+            chat["base_url"] = co.baseUrl.strip()
+        if co.model and co.model.strip():
+            chat["model"] = co.model.strip()
+        enable_thinking = bool(co.enableThinking)
+        if co.thinkingStyle and co.thinkingStyle.strip():
+            thinking_style = co.thinkingStyle.strip().upper()
+
+    if model_override and model_override.embedding:
+        eo = model_override.embedding
+        if eo.baseUrl and eo.baseUrl.strip():
+            emb["base_url"] = eo.baseUrl.strip()
+        if eo.model and eo.model.strip():
+            emb["model"] = eo.model.strip()
+
+    extra_body = resolve_thinking_extra_body(
+        str(chat.get("base_url") or ""),
+        str(chat.get("model") or ""),
+        enable_thinking,
+        thinking_style,
+    )
+    if extra_body:
+        chat["extra_body"] = extra_body
+    else:
+        chat.pop("extra_body", None)
+
     chat.pop("api_key", None)
     emb.pop("api_key", None)
     return cfg
+
+
+def _resolve_secret_env(model_override: ModelConfigOverride | None) -> dict[str, str]:
+    def pick(override_key: str | None, clear: bool, has_override_url: bool, env_name: str) -> str:
+        if override_key and override_key.strip():
+            return override_key.strip()
+        if clear or has_override_url:
+            return "EMPTY"
+        return os.environ.get(env_name, "").strip() or "EMPTY"
+
+    chat_ov = model_override.chat if model_override else None
+    emb_ov = model_override.embedding if model_override else None
+    return {
+        "CAUSAL_CHAT_API_KEY": pick(
+            chat_ov.apiKey if chat_ov else None,
+            chat_ov.clearApiKey if chat_ov else False,
+            bool(chat_ov and chat_ov.baseUrl and chat_ov.baseUrl.strip()),
+            "CAUSAL_CHAT_API_KEY",
+        ),
+        "CAUSAL_EMBEDDING_API_KEY": pick(
+            emb_ov.apiKey if emb_ov else None,
+            emb_ov.clearApiKey if emb_ov else False,
+            bool(emb_ov and emb_ov.baseUrl and emb_ov.baseUrl.strip()),
+            "CAUSAL_EMBEDDING_API_KEY",
+        ),
+    }
 
 
 def _sha256(path: Path) -> str:
@@ -96,14 +236,16 @@ def _sha256(path: Path) -> str:
     return digest.hexdigest()
 
 
-def _redact_file(path: Path) -> None:
+def _redact_file(path: Path, extra_secrets: list[str] | None = None) -> None:
     if not path.is_file():
         return
     text = path.read_text(encoding="utf-8", errors="replace")
     changed = False
-    for key in ("CAUSAL_CHAT_API_KEY", "CAUSAL_EMBEDDING_API_KEY"):
-        secret = os.environ.get(key)
-        if secret and secret in text:
+    secrets = [os.environ.get("CAUSAL_CHAT_API_KEY"), os.environ.get("CAUSAL_EMBEDDING_API_KEY")]
+    if extra_secrets:
+        secrets.extend(extra_secrets)
+    for secret in secrets:
+        if secret and secret != "EMPTY" and len(secret) >= 4 and secret in text:
             text = text.replace(secret, "[REDACTED]")
             changed = True
     if changed:
@@ -131,9 +273,13 @@ class RunManager:
             self._copy_resume(req.resumeEngineRunId, run_dir)
         self._write_input_csv(run_dir / "input.csv", req.workId, req.blocks)
         cfg_path = run_dir / "runtime_config.yaml"
-        cfg_path.write_text(yaml.safe_dump(_load_effective_config(), allow_unicode=True), encoding="utf-8")
+        cfg_path.write_text(
+            yaml.safe_dump(_load_effective_config(req.modelConfig), allow_unicode=True),
+            encoding="utf-8",
+        )
+        secret_env = _resolve_secret_env(req.modelConfig)
         self._write_state(run_dir, {"status": "QUEUED", "stage": "PREPARE", "workId": req.workId, "createdAt": time.time()})
-        self.executor.submit(self._execute, engine_run_id, run_dir, cfg_path, req.workId, mode, req.maxCalls)
+        self.executor.submit(self._execute, engine_run_id, run_dir, cfg_path, req.workId, mode, req.maxCalls, secret_env)
         return engine_run_id
 
     def status(self, engine_run_id: str) -> dict[str, Any]:
@@ -189,16 +335,30 @@ class RunManager:
             _redact_file(path)
         return path
 
-    def _execute(self, engine_run_id: str, run_dir: Path, cfg_path: Path, work_id: str, mode: str, max_calls: int) -> None:
+    def _execute(
+        self,
+        engine_run_id: str,
+        run_dir: Path,
+        cfg_path: Path,
+        work_id: str,
+        mode: str,
+        max_calls: int,
+        secret_env: dict[str, str] | None = None,
+    ) -> None:
         with self.lock:
             if engine_run_id in self.cancelled:
                 self._write_state(run_dir, {"status": "CANCELLED", "stage": "PREPARE", "finishedAt": time.time()})
                 return
         self._write_state(run_dir, {"status": "RUNNING", "stage": "PREPARE", "workId": work_id})
+        extra_secrets = list((secret_env or {}).values())
         try:
-            exit_code = self.executor_fn(engine_run_id, run_dir, cfg_path, work_id, mode, max_calls)
-            _redact_file(run_dir / "worker.log")
-            _redact_file(run_dir / "error.json")
+            params = inspect.signature(self.executor_fn).parameters
+            if len(params) >= 7:
+                exit_code = self.executor_fn(engine_run_id, run_dir, cfg_path, work_id, mode, max_calls, secret_env or {})
+            else:
+                exit_code = self.executor_fn(engine_run_id, run_dir, cfg_path, work_id, mode, max_calls)
+            _redact_file(run_dir / "worker.log", extra_secrets)
+            _redact_file(run_dir / "error.json", extra_secrets)
             with self.lock:
                 was_cancelled = engine_run_id in self.cancelled
             if was_cancelled:
@@ -221,13 +381,24 @@ class RunManager:
             with self.lock:
                 self.processes.pop(engine_run_id, None)
 
-    def _run_subprocess(self, engine_run_id: str, run_dir: Path, cfg_path: Path, work_id: str, mode: str, max_calls: int) -> int:
+    def _run_subprocess(
+        self,
+        engine_run_id: str,
+        run_dir: Path,
+        cfg_path: Path,
+        work_id: str,
+        mode: str,
+        max_calls: int,
+        secret_env: dict[str, str] | None = None,
+    ) -> int:
         cmd = [
             sys.executable, str(ENGINE_DIR / "platform_entry.py"),
             "--config", str(cfg_path), "--directory", str(run_dir),
             "--work-id", work_id, "--mode", mode, "--max-calls", str(max_calls),
         ]
         env = {k: os.environ[k] for k in ALLOWED_ENV if k in os.environ}
+        if secret_env:
+            env.update(secret_env)
         env.update({
             "PYTHONUNBUFFERED": "1", "PYTHONDONTWRITEBYTECODE": "1",
             "OPENBLAS_NUM_THREADS": "2", "OMP_NUM_THREADS": "2",

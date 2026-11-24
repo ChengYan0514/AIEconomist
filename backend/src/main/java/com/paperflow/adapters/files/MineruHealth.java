@@ -8,19 +8,27 @@ import java.net.http.HttpResponse;
 import java.net.http.HttpTimeoutException;
 import java.time.Duration;
 import java.util.concurrent.TimeoutException;
+import java.util.function.Supplier;
 
 public final class MineruHealth {
     private final HttpClient client;
-    private final HttpRequest request;
+    private final Supplier<URI> baseUrl;
+    private final Duration timeout;
 
     public MineruHealth(URI base, Duration timeout) {
-        URI address = URI.create(base.toString().replaceFirst("/+$", "") + "/v1/health");
-        client = HttpClient.newBuilder().version(HttpClient.Version.HTTP_1_1).connectTimeout(timeout).build();
-        request = HttpRequest.newBuilder(address).timeout(timeout).GET().build();
+        this(() -> base, timeout);
+    }
+
+    public MineruHealth(Supplier<URI> baseUrl, Duration timeout) {
+        this.baseUrl = baseUrl;
+        this.timeout = timeout;
+        this.client = HttpClient.newBuilder().version(HttpClient.Version.HTTP_1_1).connectTimeout(timeout).build();
     }
 
     public void check() throws IOException, InterruptedException, TimeoutException {
         try {
+            URI address = URI.create(baseUrl.get().toString().replaceFirst("/+$", "") + "/v1/health");
+            HttpRequest request = HttpRequest.newBuilder(address).timeout(timeout).GET().build();
             var response = client.send(request, HttpResponse.BodyHandlers.replacing(null));
             if (response.statusCode() / 100 != 2) throw new IOException("Unhealthy MinerU response");
         } catch (HttpTimeoutException error) {

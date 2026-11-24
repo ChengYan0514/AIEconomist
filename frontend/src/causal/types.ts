@@ -1,6 +1,62 @@
 export type SignCategory = "positive" | "negative" | "null" | "mixed"
 export type CausalIngestionMode = "RAW" | "STANDARDIZED"
+export type CausalReviewPolicy = "MANUAL_REVIEW" | "AUTO_PUBLISH"
 export type CausalTargetMode = "PAPER_IDS" | "WORK_IDS" | "SOURCE_IDS" | "FILTER"
+
+export type PaperCausalStatusType =
+  | "EXTRACTING"
+  | "PENDING_REVIEW"
+  | "EXTRACTED"
+  | "EXTRACTED_NO_CAUSAL"
+  | "FAILED"
+  | "PREREQUISITE_MISSING"
+  | "NOT_EXTRACTED"
+
+export interface PaperCausalStatusInfo {
+  paperId: string
+  workId: string | null
+  sourceId: string | null
+  paperTitle: string | null
+  status: PaperCausalStatusType
+  claimCount: number
+  activeBatchId: string | null
+  activeRunId: string | null
+  errorCode: string | null
+  causalLog: string | null
+}
+
+export interface CausalOverviewStage2Stats {
+  succeededPapers: number
+  unextractedPapers: number
+  failedPapers: number
+  activePapers: number
+  totalClaims: number
+}
+
+export interface EditableClaimItem {
+  claimId: string
+  cause: string
+  effect: string
+  typeOfRelationship: string
+  signOfImpact: string
+  isMainContribution: boolean
+  statisticalSignificance: string
+  causalInferenceMethod: string
+  sourcesOfExogenousVariation: string | null
+  levelOfTentativeness: string | null
+  evidenceMethodOtherDescription: string | null
+  evidence: string
+}
+
+export interface RunReviewDraft {
+  runId: string
+  batchId: string
+  paperId: string
+  workId: string
+  paperTitle: string | null
+  status: string
+  claims: EditableClaimItem[]
+}
 
 export interface CausalOverview {
   totalClaimRecords: number
@@ -207,7 +263,7 @@ export interface CausalRunView {
   workId: string | null
   sourceId: string | null
   paperTitle: string | null
-  status: "QUEUED" | "RUNNING" | "PUBLISHING" | "SUCCEEDED" | "SKIPPED" | "FAILED" | "CANCELLED"
+  status: "QUEUED" | "RUNNING" | "PENDING_REVIEW" | "PUBLISHING" | "SUCCEEDED" | "SKIPPED" | "FAILED" | "CANCELLED"
   stage: "PREPARE" | "STAGE0" | "STAGE1" | "NORMALIZE" | "MAP" | "PUBLISH"
   metrics: CausalRunMetrics
   errorCode: string | null
@@ -220,6 +276,7 @@ export interface CausalRunView {
 export interface CausalBatchView {
   batchId: string
   ingestionMode: CausalIngestionMode
+  reviewPolicy?: CausalReviewPolicy
   status: "QUEUED" | "RUNNING" | "SUCCEEDED" | "PARTIAL" | "FAILED" | "CANCELLED"
   cancelled: boolean
   scope: Record<string, unknown>
@@ -227,6 +284,7 @@ export interface CausalBatchView {
   total: number
   queued: number
   running: number
+  pendingReview?: number
   publishing: number
   succeeded: number
   zeroClaimPapers: number
@@ -237,6 +295,7 @@ export interface CausalBatchView {
   callsUsed: number
   canCancel: boolean
   canRetry: boolean
+  canReview?: boolean
   createdAt: string
   finishedAt: string | null
 }

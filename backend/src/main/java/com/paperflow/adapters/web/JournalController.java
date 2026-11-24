@@ -37,13 +37,13 @@ public class JournalController {
 
     record JournalSummaryView(String sourceId, String name, long totalPapers, long archivedPapers,
                               long publishedCount, long readyCount, long unprocessedCount, long failedCount,
-                              long unsupportedCount, long matchedCount, Integer yearMin, Integer yearMax,
+                              long unsupportedCount, long matchedCount, long causalExtractedCount, Integer yearMin, Integer yearMax,
                               OffsetDateTime latestUpdatedAt) {
         static JournalSummaryView from(JournalSummary source) {
             return new JournalSummaryView(source.sourceId(), source.name(), source.totalPapers(),
                     source.archivedPapers(), source.publishedCount(), source.readyCount(), source.unprocessedCount(),
-                    source.failedCount(), source.unsupportedCount(), source.matchedCount(), source.yearMin(),
-                    source.yearMax(), source.latestUpdatedAt());
+                    source.failedCount(), source.unsupportedCount(), source.matchedCount(), source.causalExtractedCount(),
+                    source.yearMin(), source.yearMax(), source.latestUpdatedAt());
         }
     }
 

@@ -34,6 +34,7 @@ export interface JournalSummary {
   failedCount: number
   unsupportedCount: number
   matchedCount: number
+  causalExtractedCount?: number
   yearMin: number | null
   yearMax: number | null
   latestUpdatedAt: string | null

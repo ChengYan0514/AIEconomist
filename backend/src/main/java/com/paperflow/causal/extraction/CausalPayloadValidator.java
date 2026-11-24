@@ -21,6 +21,59 @@ public final class CausalPayloadValidator {
         this.json = json;
     }
 
+    public List<EditableClaimItem> toEditableClaims(List<ClaimPayloadRow> rows) {
+        if (rows == null || rows.isEmpty()) return List.of();
+        List<EditableClaimItem> list = new ArrayList<>();
+        int seq = 1;
+        for (ClaimPayloadRow row : rows) {
+            String claimId = row.claimHash() != null && !row.claimHash().isBlank() ? row.claimHash() : "claim-" + (seq++);
+            list.add(new EditableClaimItem(
+                    claimId, row.cause(), row.effect(), row.typeOfRelationship(),
+                    row.signOfImpact(), row.isMainContribution(), row.statisticalSignificance(),
+                    row.causalInferenceMethod(), row.sourcesOfExogenousVariation(),
+                    row.levelOfTentativeness(), row.evidenceMethodOtherDescription(), row.evidence()
+            ));
+        }
+        return list;
+    }
+
+    public ValidatedResult parseAndValidateEditedClaims(String workId, List<EditableClaimItem> items, RunMetrics originalMetrics) {
+        List<ClaimPayloadRow> rows = new ArrayList<>();
+        if (items != null) {
+            for (EditableClaimItem item : items) {
+                if (item.cause() == null || item.cause().isBlank() || item.effect() == null || item.effect().isBlank()) {
+                    continue; // Skip blank rows
+                }
+                String cause = item.cause().strip();
+                String effect = item.effect().strip();
+                String hash = claimHash(cause, effect);
+                String claimText = (item.evidence() != null && !item.evidence().isBlank()) ? item.evidence() : (cause + " -> " + effect);
+                rows.add(new ClaimPayloadRow(
+                        workId, cause, effect, hash, claimText, cause, effect,
+                        Objects.requireNonNullElse(item.signOfImpact(), "positive"),
+                        Objects.requireNonNullElse(item.typeOfRelationship(), "direct effect"),
+                        Objects.requireNonNullElse(item.evidence(), ""),
+                        Objects.requireNonNullElse(item.causalInferenceMethod(), "Other"),
+                        item.evidenceMethodOtherDescription(),
+                        item.isMainContribution(),
+                        item.levelOfTentativeness(),
+                        item.sourcesOfExogenousVariation(),
+                        item.statisticalSignificance(),
+                        null, null
+                ));
+            }
+        }
+        RunMetrics metrics = new RunMetrics(
+                rows.size(),
+                originalMetrics != null ? originalMetrics.collisionCount() : 0,
+                originalMetrics != null ? originalMetrics.callsUsed() : 0,
+                originalMetrics != null ? originalMetrics.tokensUsed() : 0,
+                originalMetrics != null ? originalMetrics.modelVersions() : List.of()
+        );
+        String payloadHash = digest("SHA-256", workId + "::" + rows.size() + "::" + System.currentTimeMillis());
+        return new ValidatedResult(rows, payloadHash, metrics);
+    }
+
     public String inputHash(String paperId, String workId, String sourceId, List<BlockExportRow> blocks) {
         try {
             Map<String, Object> canonical = new LinkedHashMap<>();

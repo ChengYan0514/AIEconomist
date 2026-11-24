@@ -1,7 +1,8 @@
-import { Archive, ArrowLeft, BookOpen, Check, ClipboardList, Copy, Database, Download, ExternalLink, FileText, ListTree, Network, Pencil, RotateCcw, ScanText, Sparkles, UploadCloud } from "lucide-react"
+import { Archive, ArrowLeft, BookOpen, Check, ClipboardList, Copy, Database, Download, ExternalLink, FileText, ListTree, Network, Pencil, Play, RotateCcw, ScanText, Sparkles, UploadCloud } from "lucide-react"
 import { useState } from "react"
 import { api, dateLabel, errorMessage, jobPath, paperPath, params, useQuery } from "../api"
-import { extractionEntryHref, paperClaimsPath, type CausalPaperSummary } from "../causal/types"
+import { extractionEntryHref, paperClaimsPath, type CausalPaperSummary, type PaperCausalStatusInfo } from "../causal/types"
+import { ReviewWorkbenchModal } from "../causal/review-workbench"
 import { Chip, Empty, JobChip, Loading, Modal, Notice, Pagination, jobKinds } from "../components/shared"
 import { Button } from "../components/ui/button"
 import { SectionHeader } from "../components/workspace"
@@ -133,21 +134,183 @@ export function PaperDetail({ id }: { id: string }) {
 function CausalPaperCard({ paper, canExtract }: { paper: Paper; canExtract: boolean }) {
   const workId = paper.matchedWorkId
   const summary = useQuery<CausalPaperSummary>(workId ? "/causal/papers/" + encodeURIComponent(workId) + "/summary" : null)
+  const causalStatusRes = useQuery<PaperCausalStatusInfo>("/causal/papers/status/" + encodeURIComponent(paper.paperId))
+  const cInfo = causalStatusRes.data
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState("")
+  const [reviewOpen, setReviewOpen] = useState(false)
+
   const canStart = canExtract && !paper.archived && paper.status === "PUBLISHED" && Boolean(workId)
+
+  async function handleDirectExtract() {
+    setBusy(true)
+    setError("")
+    try {
+      await api("/causal/extractions", {
+        method: "POST",
+        body: JSON.stringify({
+          target: { mode: "PAPER_IDS", paperIds: [paper.paperId] },
+          ingestionMode: "RAW",
+          reviewPolicy: "MANUAL_REVIEW",
+        }),
+      })
+      causalStatusRes.reload()
+      summary.reload()
+    } catch (e: any) {
+      setError(errorMessage(e))
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  const status = cInfo?.status ?? (canStart ? "NOT_EXTRACTED" : "PREREQUISITE_MISSING")
+
   return <section className="panel detail-card">
-    <div className="detail-card-title"><Network size={16} strokeWidth={1.7} aria-hidden="true" /><h2>因果知识图谱</h2></div>
-    {!workId ? <p className="muted text-sm leading-relaxed">关联 OpenAlex 作品并发布全文后，可发起因果抽取并查看论文因果声明。</p> :
-      summary.data?.hasClaims ? <div className="small-facts">
-        <div><span>抽取记录</span><strong className="tabular-nums">{summary.data.claimRecordCount.toLocaleString()}</strong></div>
-        <div><span>标准关系</span><strong className="tabular-nums">{summary.data.standardClaimCount.toLocaleString()}</strong></div>
-        <div><span>变量数</span><strong className="tabular-nums">{summary.data.variableCount.toLocaleString()}</strong></div>
-      </div> : <p className="muted text-sm leading-relaxed">{summary.loading ? "正在查询声明记录…" : "该作品尚未入库声明记录。"}</p>}
-    <div className="card-actions">
-      {workId && <Button asChild variant="outline"><a href={paperClaimsPath(workId)}><Network size={14} aria-hidden="true" />查看论文因果声明</a></Button>}
-      {canStart && <Button asChild variant={summary.data?.hasClaims ? "outline" : "default"}>
-        <a href={extractionEntryHref({ mode: "PAPER_IDS", ids: [paper.paperId] })}><Sparkles size={14} aria-hidden="true" />发起因果抽取</a>
-      </Button>}
+    <div className="detail-card-title">
+      <Network size={16} strokeWidth={1.7} aria-hidden="true" />
+      <h2>因果声明 (04 LLM因果抽取)</h2>
     </div>
+
+    {error && <Notice error>{error}</Notice>}
+
+    {status === "PREREQUISITE_MISSING" && (
+      <p className="muted text-sm leading-relaxed">
+        前置未完成：需先关联 OpenAlex 作品并完成全文解析导入发布，方可进行因果声明抽取。
+      </p>
+    )}
+
+    {status === "NOT_EXTRACTED" && (
+      <div>
+        <p className="muted text-sm leading-relaxed mb-3">
+          该论文已完成全文发布与书目关联，尚未进行 LLM 因果声明抽取。
+        </p>
+        <div className="card-actions">
+          {canExtract && (
+            <Button type="button" disabled={busy} onClick={handleDirectExtract}>
+              <Sparkles size={14} aria-hidden="true" />抽取
+            </Button>
+          )}
+        </div>
+      </div>
+    )}
+
+    {status === "EXTRACTING" && (
+      <div>
+        <div className="status-chip status-blue mb-2">
+          <span className="status-dot" aria-hidden="true" />
+          LLM 抽取因果知识中...
+        </div>
+        <p className="muted text-sm leading-relaxed">
+          正在调用大模型进行因果声明抽取与分析，请稍候...
+        </p>
+      </div>
+    )}
+
+    {status === "PENDING_REVIEW" && (
+      <div>
+        <div className="status-chip status-amber mb-2">
+          <span className="status-dot" aria-hidden="true" />
+          抽取完成待人工审核
+        </div>
+        <p className="muted text-sm leading-relaxed mb-3">
+          模型已完成阶段抽取，等待人工审核确认后入库。
+        </p>
+        <div className="card-actions">
+          {canExtract && cInfo?.activeRunId && (
+            <Button type="button" onClick={() => setReviewOpen(true)}>
+              打开审核表单
+            </Button>
+          )}
+        </div>
+      </div>
+    )}
+
+    {status === "FAILED" && (
+      <div>
+        <div className="status-chip status-red mb-2">
+          <span className="status-dot" aria-hidden="true" />
+          抽取失败
+        </div>
+        {cInfo?.causalLog && (
+          <div className="p-2 bg-red-50 text-red-700 text-xs rounded border border-red-200 mb-3 font-mono break-all">
+            {cInfo.causalLog}
+          </div>
+        )}
+        <div className="card-actions">
+          {canExtract && (
+            <Button type="button" disabled={busy} onClick={handleDirectExtract}>
+              <RotateCcw size={14} aria-hidden="true" />重新抽取
+            </Button>
+          )}
+        </div>
+      </div>
+    )}
+
+    {status === "EXTRACTED_NO_CAUSAL" && (
+      <div>
+        <div className="status-chip status-neutral mb-2">
+          <span className="status-dot" aria-hidden="true" />
+          已抽取（无因果）
+        </div>
+        <p className="muted text-sm leading-relaxed mb-3">
+          模型已完成抽取分析，未从该论文中提取出有效的因果声明。
+        </p>
+        <div className="card-actions">
+          {canExtract && (
+            <Button type="button" variant="outline" disabled={busy} onClick={handleDirectExtract}>
+              <RotateCcw size={14} aria-hidden="true" />重新抽取
+            </Button>
+          )}
+        </div>
+      </div>
+    )}
+
+    {status === "EXTRACTED" && (
+      <div>
+        <div className="small-facts mb-3">
+          <div><span>声明记录</span><strong className="tabular-nums">{summary.data?.claimRecordCount ?? cInfo?.claimCount ?? 0}</strong></div>
+          <div><span>标准关系</span><strong className="tabular-nums">{summary.data?.standardClaimCount ?? 0}</strong></div>
+          <div><span>变量数</span><strong className="tabular-nums">{summary.data?.variableCount ?? 0}</strong></div>
+        </div>
+        <div className="card-actions">
+          {workId && (
+            <Button asChild variant="outline">
+              <a href={paperClaimsPath(workId)}><Network size={14} aria-hidden="true" />查看论文因果声明</a>
+            </Button>
+          )}
+          {canExtract && (
+            <Button type="button" variant="outline" disabled={busy} onClick={handleDirectExtract}>
+              <RotateCcw size={14} aria-hidden="true" />重新抽取
+            </Button>
+          )}
+        </div>
+      </div>
+    )}
+
+    {reviewOpen && cInfo?.activeRunId && (
+      <ReviewWorkbenchModal
+        drafts={[{
+          runId: cInfo.activeRunId,
+          batchId: cInfo.activeBatchId || "",
+          paperId: paper.paperId,
+          workId: workId || "",
+          paperTitle: paper.title || paper.paperId,
+          status: "PENDING_REVIEW",
+          claims: [],
+        }]}
+        onClose={() => setReviewOpen(false)}
+        onSubmit={async (drafts) => {
+          if (drafts[0]) {
+            await api(`/causal/runs/${encodeURIComponent(cInfo.activeRunId!)}/review`, {
+              method: "POST",
+              body: JSON.stringify({ claims: drafts[0].claims }),
+            })
+            causalStatusRes.reload()
+            summary.reload()
+          }
+        }}
+      />
+    )}
   </section>
 }
 

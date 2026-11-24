@@ -125,6 +125,93 @@ class CausalEngineApiTest(unittest.TestCase):
         self.assertEqual(st2["status"], "SUCCEEDED")
         self.assertTrue(copied_flag["found"])
 
+    def test_per_run_model_override_keyless_local_and_thinking_styles(self) -> None:
+        import yaml
+
+        # Auto-detect thinking parameter styles across providers
+        self.assertEqual(
+            engine_app.resolve_thinking_extra_body("https://api.deepseek.com/v1", "deepseek-chat", False, "AUTO"),
+            {"thinking": {"type": "disabled"}},
+        )
+        self.assertEqual(
+            engine_app.resolve_thinking_extra_body("https://api.deepseek.com/v1", "deepseek-chat", True, "AUTO"),
+            {"thinking": {"type": "enabled"}},
+        )
+        self.assertEqual(
+            engine_app.resolve_thinking_extra_body("https://api.siliconflow.cn/v1", "Qwen/Qwen3-32B", False, "AUTO"),
+            {"enable_thinking": False},
+        )
+        self.assertEqual(
+            engine_app.resolve_thinking_extra_body("https://dashscope.aliyuncs.com/compatible-mode/v1", "qwen3-max", True, "AUTO"),
+            {"enable_thinking": True},
+        )
+        self.assertEqual(
+            engine_app.resolve_thinking_extra_body("http://127.0.0.1:8000/v1", "Qwen3-14B", False, "AUTO"),
+            {"chat_template_kwargs": {"enable_thinking": False}},
+        )
+        self.assertEqual(
+            engine_app.resolve_thinking_extra_body("http://127.0.0.1:11434/v1", "deepseek-r1:14b", False, "AUTO"),
+            {"think": False},
+        )
+        self.assertEqual(
+            engine_app.resolve_thinking_extra_body("https://api.deepseek.com/v1", "deepseek-chat", False, "NONE"),
+            {},
+        )
+
+        captured: dict = {}
+
+        def fake_exec(engine_run_id, run_dir: Path, cfg_path, work_id, mode, max_calls, secret_env):
+            captured["cfg"] = yaml.safe_load(Path(cfg_path).read_text(encoding="utf-8"))
+            captured["env"] = dict(secret_env)
+            (run_dir / "worker.log").write_text("leaked sk-deepseek-secret-9999\n", encoding="utf-8")
+            (run_dir / "result.json").write_text(json.dumps({"workId": work_id, "rows": [], "claimCount": 0}), encoding="utf-8")
+            return 0
+
+        mgr = engine_app.RunManager(self.work_dir, executor_fn=fake_exec)
+        client = TestClient(engine_app.create_app(mgr))
+
+        resp = client.post(
+            "/v1/runs",
+            json={
+                "runId": "r-override",
+                "workId": "W55",
+                "blocks": [{"blockId": "b1", "blockType": "text", "blockText": "x", "blockSeq": 0}],
+                "modelConfig": {
+                    "chat": {
+                        "baseUrl": "https://api.deepseek.com/v1",
+                        "model": "deepseek-chat",
+                        "apiKey": "sk-deepseek-secret-9999",
+                        "enableThinking": False,
+                        "thinkingStyle": "AUTO",
+                    },
+                    "embedding": {
+                        "baseUrl": "http://127.0.0.1:8001/v1",
+                        "model": "local-bge-m3",
+                        "clearApiKey": True,
+                    },
+                },
+            },
+        )
+        self.assertEqual(resp.status_code, 202)
+        engine_id = resp.json()["engineRunId"]
+        for _ in range(40):
+            st = client.get(f"/v1/runs/{engine_id}").json()
+            if st["status"] == "SUCCEEDED":
+                break
+            time.sleep(0.05)
+
+        self.assertEqual(captured["cfg"]["models"]["chat"]["base_url"], "https://api.deepseek.com/v1")
+        self.assertEqual(captured["cfg"]["models"]["chat"]["model"], "deepseek-chat")
+        self.assertEqual(captured["cfg"]["models"]["chat"]["extra_body"], {"thinking": {"type": "disabled"}})
+        self.assertNotIn("api_key", captured["cfg"]["models"]["chat"])
+        self.assertEqual(captured["cfg"]["models"]["embedding"]["base_url"], "http://127.0.0.1:8001/v1")
+        self.assertEqual(captured["env"]["CAUSAL_CHAT_API_KEY"], "sk-deepseek-secret-9999")
+        self.assertEqual(captured["env"]["CAUSAL_EMBEDDING_API_KEY"], "EMPTY")
+
+        worker_log = client.get(f"/v1/runs/{engine_id}/artifacts/worker.log").text
+        self.assertNotIn("sk-deepseek-secret-9999", worker_log)
+        self.assertIn("[REDACTED]", worker_log)
+
 
 if __name__ == "__main__":
     unittest.main()

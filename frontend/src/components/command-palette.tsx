@@ -1,6 +1,6 @@
 import {
   Activity, ArrowRight, BarChart3, BookMarked, ClipboardList, CornerDownLeft, Database, FileText,
-  LayoutDashboard, Network, Search, Shield, Sparkles, Upload, UsersRound,
+  LayoutDashboard, Network, Search, Settings2, Shield, Sparkles, Upload, UsersRound,
 } from "lucide-react"
 import { useEffect, useId, useMemo, useRef, useState, type ReactNode } from "react"
 import { paperPath, params, useQuery } from "../api"
@@ -29,6 +29,7 @@ const navTargets: { path: string; label: string; group: string; keywords: string
   { path: "/causal-fields", label: "领域分析", group: "知识图谱", keywords: "causal fields subfields topics 领域 子领域 主题 方法", icon: BarChart3, permission: "CAUSAL_READ" },
   { path: "/causal-extraction", label: "因果抽取", group: "知识图谱", keywords: "causal extraction llm 因果 抽取 批次 任务", icon: Sparkles, permission: "CAUSAL_READ" },
   { path: "/system-status", label: "系统状态", group: "系统管理", keywords: "system status health postgres mineru 健康", icon: Activity, permission: "SYSTEM_MANAGE" },
+  { path: "/service-settings", label: "服务配置", group: "系统管理", keywords: "service settings mineru llm deepseek embedding model api key 模型 端口 配置", icon: Settings2, permission: "SYSTEM_MANAGE" },
   { path: "/users", label: "用户管理", group: "系统管理", keywords: "users accounts 账号 密码", icon: UsersRound, permission: "SYSTEM_MANAGE" },
   { path: "/roles", label: "角色管理", group: "系统管理", keywords: "roles permissions 权限", icon: Shield, permission: "SYSTEM_MANAGE" },
   { path: "/audit", label: "审计日志", group: "系统管理", keywords: "audit logs 追溯 记录", icon: ClipboardList, permission: "SYSTEM_MANAGE" },

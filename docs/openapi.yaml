@@ -403,6 +403,59 @@ paths:
                 oneOf:
                   - $ref: '#/components/responses/Error/content/application~1json/schema'
                   - type: object
+  /service-settings:
+    get:
+      operationId: getServiceSettings
+      description: 需要 SYSTEM_MANAGE。读取当前生效的 MinerU、因果抽取引擎、对话大模型与嵌入模型配置（API Key 仅返回脱敏状态与掩码）。
+      responses:
+        '200': {description: 当前生效的服务配置, content: {application/json: {schema: {type: object}}}}
+        '403': {$ref: '#/components/responses/Error'}
+    put:
+      operationId: updateServiceSettings
+      description: 需要 SYSTEM_MANAGE。保存服务与模型配置并立即热生效，写入审计日志。API Key 留空表示保持原有密钥，传 clearApiKey=true 表示清除密钥以使用本地免密模型。
+      requestBody:
+        required: true
+        content: {application/json: {schema: {type: object}}}
+      responses:
+        '200': {description: 更新后的生效配置, content: {application/json: {schema: {type: object}}}}
+        '400': {$ref: '#/components/responses/Error'}
+        '403': {$ref: '#/components/responses/Error'}
+  /service-settings/test/mineru:
+    post:
+      operationId: testMineruConnection
+      description: 需要 SYSTEM_MANAGE。使用传入地址（或当前生效配置）测试 MinerU `/v1/health` 连通性。
+      requestBody:
+        required: true
+        content: {application/json: {schema: {type: object}}}
+      responses:
+        '200': {description: 探测结果, content: {application/json: {schema: {type: object}}}}
+  /service-settings/test/causal-engine:
+    post:
+      operationId: testCausalEngineConnection
+      description: 需要 SYSTEM_MANAGE。使用传入地址（或当前生效配置）测试因果抽取引擎 `/v1/health` 连通性。
+      requestBody:
+        required: true
+        content: {application/json: {schema: {type: object}}}
+      responses:
+        '200': {description: 探测结果, content: {application/json: {schema: {type: object}}}}
+  /service-settings/test/chat:
+    post:
+      operationId: testChatModelConnection
+      description: 需要 SYSTEM_MANAGE。发送极简探活请求验证对话大模型连通性及思考模式控制参数兼容性。
+      requestBody:
+        required: true
+        content: {application/json: {schema: {type: object}}}
+      responses:
+        '200': {description: 探测结果, content: {application/json: {schema: {type: object}}}}
+  /service-settings/test/embedding:
+    post:
+      operationId: testEmbeddingModelConnection
+      description: 需要 SYSTEM_MANAGE。发送单条文本嵌入请求验证嵌入模型连通性与向量维度。
+      requestBody:
+        required: true
+        content: {application/json: {schema: {type: object}}}
+      responses:
+        '200': {description: 探测结果, content: {application/json: {schema: {type: object}}}}
                     required: [timestamp, status, error, path]
                     properties:
                       timestamp: {type: string, format: date-time}
@@ -843,6 +896,21 @@ paths:
       parameters: [{name: workId, in: path, required: true, schema: {type: string}}]
       responses:
         '200': {description: 论文因果摘要, content: {application/json: {schema: {type: object}}}}
+  /causal/papers/status/{paperId}:
+    get:
+      operationId: causalPaperStatus
+      description: 需要 PAPER_READ。返回单篇论文维度的因果抽取状态（未抽取/抽取中/待审核/已抽取/无因果/失败及日志/前置未完成）。
+      parameters: [{name: paperId, in: path, required: true, schema: {type: string}}]
+      responses:
+        '200': {description: 论文因果状态详情, content: {application/json: {schema: {type: object}}}}
+        '404': {$ref: '#/components/responses/Error'}
+  /causal/overview-stats:
+    get:
+      operationId: causalOverviewStats
+      description: 需要 PAPER_READ。返回论文因果抽取阶段二全局统计概况（成功抽取、未抽取、抽取失败）。
+      parameters: [{name: sourceId, in: query, schema: {type: string}}]
+      responses:
+        '200': {description: 因果抽取统计概况, content: {application/json: {schema: {type: object}}}}
   /causal/search/variables:
     get:
       operationId: searchCausalVariables
@@ -913,12 +981,32 @@ paths:
       description: 需要 CAUSAL_READ。查看批次详情及按状态筛选分页的单篇抽取记录。
       parameters:
         - {name: batchId, in: path, required: true, schema: {type: string, format: uuid}}
-        - {name: status, in: query, schema: {type: string, enum: [QUEUED, RUNNING, PUBLISHING, SUCCEEDED, SKIPPED, FAILED, CANCELLED]}}
+        - {name: status, in: query, schema: {type: string, enum: [QUEUED, RUNNING, PENDING_REVIEW, PUBLISHING, SUCCEEDED, SKIPPED, FAILED, CANCELLED]}}
         - {$ref: '#/components/parameters/Page'}
         - {$ref: '#/components/parameters/Size'}
       responses:
         '200': {description: 批次与单篇记录详情, content: {application/json: {schema: {type: object}}}}
         '404': {$ref: '#/components/responses/Error'}
+  /causal/extractions/{batchId}/review:
+    get:
+      operationId: getCausalBatchReview
+      description: 需要 CAUSAL_READ。获取批次中所有待审核（PENDING_REVIEW）论文的抽取草稿列表供人工审核。
+      parameters: [{name: batchId, in: path, required: true, schema: {type: string, format: uuid}}]
+      responses:
+        '200': {description: 批次待审核列表, content: {application/json: {schema: {type: array, items: {type: object}}}}}
+        '404': {$ref: '#/components/responses/Error'}
+    post:
+      operationId: submitCausalBatchReview
+      description: 需要 CAUSAL_EXTRACT。提交批次中待审核论文的最终因果主张，审核通过并确定入库。
+      parameters: [{name: batchId, in: path, required: true, schema: {type: string, format: uuid}}]
+      requestBody:
+        required: true
+        content: {application/json: {schema: {type: object, properties: {runs: {type: array, items: {type: object}}}}}}
+      responses:
+        '200': {description: 批次审核提交完成, content: {application/json: {schema: {type: object}}}}
+        '400': {$ref: '#/components/responses/Error'}
+        '404': {$ref: '#/components/responses/Error'}
+        '409': {$ref: '#/components/responses/Error'}
   /causal/extractions/{batchId}/events:
     get:
       operationId: streamCausalBatchEvents
@@ -963,6 +1051,34 @@ paths:
         '200': {description: 产物文件流, content: {application/octet-stream: {schema: {type: string, format: binary}}}}
         '400': {$ref: '#/components/responses/Error'}
         '404': {$ref: '#/components/responses/Error'}
+  /causal/runs/{runId}/review:
+    get:
+      operationId: getCausalRunReview
+      description: 需要 CAUSAL_READ。获取单篇待审核运行的抽取草稿。
+      parameters: [{name: runId, in: path, required: true, schema: {type: string, format: uuid}}]
+      responses:
+        '200': {description: 单篇待审核草稿, content: {application/json: {schema: {type: object}}}}
+        '404': {$ref: '#/components/responses/Error'}
+    post:
+      operationId: submitCausalRunReview
+      description: 需要 CAUSAL_EXTRACT。提交单篇审核后的因果主张并确定入库。
+      parameters: [{name: runId, in: path, required: true, schema: {type: string, format: uuid}}]
+      requestBody:
+        required: true
+        content: {application/json: {schema: {type: object, properties: {claims: {type: array, items: {type: object}}}}}}
+      responses:
+        '200': {description: 审核通过入库成功, content: {application/json: {schema: {type: object}}}}
+        '400': {$ref: '#/components/responses/Error'}
+        '404': {$ref: '#/components/responses/Error'}
+        '409': {$ref: '#/components/responses/Error'}
+    delete:
+      operationId: dismissCausalRunReview
+      description: 需要 CAUSAL_EXTRACT。放弃/取消单篇待审核运行，不入库。
+      parameters: [{name: runId, in: path, required: true, schema: {type: string, format: uuid}}]
+      responses:
+        '200': {description: 已取消待审核, content: {application/json: {schema: {type: object}}}}
+        '404': {$ref: '#/components/responses/Error'}
+        '409': {$ref: '#/components/responses/Error'}
 components:
   securitySchemes:
     session:

@@ -1,7 +1,7 @@
 import {
   Activity, ArrowLeftRight, BarChart3, BookMarked, ChevronDown, ChevronRight, ClipboardList, Database, FileText,
   LayoutDashboard, LogOut, Menu, Network, PanelLeftClose, PanelLeftOpen, Search,
-  Shield, ShieldCheck, Sparkles, Upload, UsersRound, X,
+  Settings2, Shield, ShieldCheck, Sparkles, Upload, UsersRound, X,
 } from "lucide-react"
 import { useEffect, useState, type ReactNode } from "react"
 import { usePermissions, type Permission } from "../permissions"
@@ -73,6 +73,7 @@ const navigationGroups: NavGroup[] = [
     label: "系统管理",
     items: [
       { path: "/system-status", label: "系统状态", icon: Activity, permission: "SYSTEM_MANAGE" },
+      { path: "/service-settings", label: "服务配置", icon: Settings2, permission: "SYSTEM_MANAGE" },
       { path: "/users", label: "用户管理", icon: UsersRound, permission: "SYSTEM_MANAGE" },
       { path: "/roles", label: "角色管理", icon: Shield, permission: "SYSTEM_MANAGE" },
       { path: "/audit", label: "审计日志", icon: ClipboardList, permission: "SYSTEM_MANAGE" },

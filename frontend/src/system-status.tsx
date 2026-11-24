@@ -1,4 +1,4 @@
-import { RefreshCw, Server } from "lucide-react"
+import { RefreshCw, Server, Settings2 } from "lucide-react"
 import { useQuery } from "./api"
 import { Notice } from "./components/shared"
 import { Button } from "./components/ui/button"
@@ -49,10 +49,15 @@ export function SystemStatus() {
 
   return <>
     <SectionHeader title="系统状态" description="核验数据库、MinerU 解析服务、文件存储、OpenAlex 快照与因果图谱服务的实时可用性。"
-      actions={<Button type="button" onClick={reload} disabled={loading}>
-        <RefreshCw size={15} className={loading ? "animate-spin" : undefined} aria-hidden="true" />
-        {loading ? "正在检查…" : "重新检查"}
-      </Button>} />
+      actions={<>
+        <Button asChild variant="outline">
+          <a href="/service-settings"><Settings2 size={15} aria-hidden="true" />服务配置</a>
+        </Button>
+        <Button type="button" onClick={reload} disabled={loading}>
+          <RefreshCw size={15} className={loading ? "animate-spin" : undefined} aria-hidden="true" />
+          {loading ? "正在检查…" : "重新检查"}
+        </Button>
+      </>} />
     {error && <div className="mb-4"><Notice error>{data ? "刷新失败，当前显示上次检查结果。" : "检查失败，请稍后重试。"}</Notice></div>}
     <section className="panel" aria-busy={loading}>
       <div className="panel-bar">

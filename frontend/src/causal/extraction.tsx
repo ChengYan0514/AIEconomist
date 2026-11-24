@@ -9,7 +9,7 @@ import { navigate, useLocation } from "../router"
 import type { Page } from "../types"
 import {
   extractionBatchPath,
-  type CausalBatchView, type CausalEstimate, type CausalIngestionMode,
+  type CausalBatchView, type CausalEstimate, type CausalIngestionMode, type CausalReviewPolicy,
   type CausalTargetMode, type CausalTargetSpec,
 } from "./types"
 
@@ -71,6 +71,7 @@ export function CausalExtractionPage() {
   const [yearFrom, setYearFrom] = useState(prefill.yearFrom)
   const [yearTo, setYearTo] = useState(prefill.yearTo)
   const [ingestionMode, setIngestionMode] = useState<CausalIngestionMode>("RAW")
+  const [reviewPolicy, setReviewPolicy] = useState<CausalReviewPolicy>("MANUAL_REVIEW")
   const [estimate, setEstimate] = useState<CausalEstimate>()
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState("")
@@ -125,7 +126,7 @@ export function CausalExtractionPage() {
     setBusy(true); setError("")
     try {
       const created = await api<CausalBatchView>("/causal/extractions", {
-        method: "POST", body: JSON.stringify({ target, ingestionMode }),
+        method: "POST", body: JSON.stringify({ target, ingestionMode, reviewPolicy }),
       })
       navigate(extractionBatchPath(created.batchId))
     } catch (err) {
@@ -169,6 +170,13 @@ export function CausalExtractionPage() {
               <option value="STANDARDIZED">标准变量入库</option>
             </select>
           </label>
+          <label>
+            <span>入库策略</span>
+            <select className="field" aria-label="入库策略" value={reviewPolicy} onChange={(e) => setReviewPolicy(e.target.value as CausalReviewPolicy)}>
+              <option value="MANUAL_REVIEW">人工审核后入库（默认）</option>
+              <option value="AUTO_PUBLISH">抽取完成自动入库</option>
+            </select>
+          </label>
         </div>
 
         {mode === "FILTER" ? <div className="causal-filter-grid">
@@ -200,8 +208,8 @@ export function CausalExtractionPage() {
               配置版本 {estimate.engineVersion} · 入库模式 {estimate.ingestionMode === "RAW" ? "原始变量（默认）" : "标准变量"} · 任务调用上限 {estimate.maxCalls} 次
             </span>
           </> : <>
-            <strong>因果抽取尚未开启，请完成模型与数据库部署配置</strong>
-            <span className="muted text-sm">请先部署 `causal-engine` 服务并配置 `PAPERFLOW_CAUSAL_ENABLED=true`。</span>
+            <strong>因果抽取尚未开启，请完成模型与引擎配置</strong>
+            <span className="muted text-sm">请前往 <a className="inline-link" href="/service-settings">系统管理 → 服务配置</a> 配置大模型并启用因果抽取。</span>
           </>}
           {Object.keys(estimate.skipReasons).length > 0 && <div className="causal-skip-pills">
             {Object.entries(estimate.skipReasons).map(([code, count]) => (

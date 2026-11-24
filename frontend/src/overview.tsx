@@ -1,5 +1,6 @@
-import { ArrowRight, ArrowUpRight, BookMarked, ClipboardList } from "lucide-react"
+import { ArrowRight, ArrowUpRight, BookMarked, ClipboardList, Sparkles } from "lucide-react"
 import { dateLabel, jobPath, params, useQuery } from "./api"
+import type { CausalOverviewStage2Stats } from "./causal/types"
 import { Chip, Empty, JobChip, JobProgress, Loading, Notice, jobKinds, paperLabels } from "./components/shared"
 import { Button } from "./components/ui/button"
 import { SectionHeader } from "./components/workspace"
@@ -22,10 +23,14 @@ export function Overview() {
         {canExport && <PaperCsvExport />}
       </>} />
     {canReadPapers && <section className="overview-section" aria-labelledby="overview-paper-status">
-      <div className="overview-heading"><h2 id="overview-paper-status">全文处理状态</h2><span>未归档论文 · 点击进入对应筛选</span></div>
+      <div className="overview-heading"><h2 id="overview-paper-status">全文处理状态</h2><span>阶段一 · 未归档论文 · 点击进入对应筛选</span></div>
       <div className="panel overview-ledger">
         {statuses.map((status) => <PaperCount key={status} status={status} />)}
       </div>
+    </section>}
+    {canReadPapers && <section className="overview-section" aria-labelledby="overview-causal-status">
+      <div className="overview-heading"><h2 id="overview-causal-status">因果抽取概况</h2><span>阶段二 · LLM因果知识抽取与入库</span></div>
+      <CausalOverviewPanel />
     </section>}
     {(canReadJobs || canReadPapers) && <div className={"overview-bento" + (canReadJobs && canReadPapers ? " is-split" : "")}>
       {canReadJobs && <RecentJobs />}
@@ -141,5 +146,39 @@ function PaperCount({ status }: { status: PaperStatus }) {
       <span role="alert">计数加载失败</span>
       <Button variant="ghost" size="sm" onClick={result.reload} aria-label={"重试" + paperLabels[status][0] + "计数"}>重试</Button>
     </div> : <span className="overview-loading-note" role="status">正在加载…</span>}
+  </div>
+}
+
+function CausalOverviewPanel() {
+  const res = useQuery<CausalOverviewStage2Stats>("/causal/overview-stats")
+  const stats = res.data
+  return <div className="panel overview-ledger">
+    <a className="overview-cell" href="/papers?causalStatus=EXTRACTED">
+      <div className="overview-cell-top">
+        <span className="status-chip status-green"><span className="status-dot" aria-hidden="true" />成功抽取论文</span>
+        <ArrowUpRight size={16} className="overview-arrow" aria-hidden="true" />
+      </div>
+      <strong className="overview-figure">
+        {res.loading ? "…" : (stats?.succeededPapers ?? 0).toLocaleString()}
+      </strong>
+    </a>
+    <a className="overview-cell" href="/papers?causalStatus=NOT_EXTRACTED">
+      <div className="overview-cell-top">
+        <span className="status-chip status-neutral"><span className="status-dot" aria-hidden="true" />未抽取论文</span>
+        <ArrowUpRight size={16} className="overview-arrow" aria-hidden="true" />
+      </div>
+      <strong className="overview-figure">
+        {res.loading ? "…" : (stats?.unextractedPapers ?? 0).toLocaleString()}
+      </strong>
+    </a>
+    <a className="overview-cell" href="/papers?causalStatus=FAILED">
+      <div className="overview-cell-top">
+        <span className="status-chip status-red"><span className="status-dot" aria-hidden="true" />抽取失败论文</span>
+        <ArrowUpRight size={16} className="overview-arrow" aria-hidden="true" />
+      </div>
+      <strong className="overview-figure" data-alert={(stats?.failedPapers ?? 0) > 0 ? "true" : undefined}>
+        {res.loading ? "…" : (stats?.failedPapers ?? 0).toLocaleString()}
+      </strong>
+    </a>
   </div>
 }

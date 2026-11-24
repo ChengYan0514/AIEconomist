@@ -12,6 +12,7 @@
                count(*) FILTER (WHERE NOT p.archived AND p.status = 'FAILED') AS failed_count,
                count(*) FILTER (WHERE NOT p.archived AND p.status = 'UNSUPPORTED') AS unsupported_count,
                count(*) FILTER (WHERE NOT p.archived AND p.matched_work_id IS NOT NULL) AS matched_count,
+               count(*) FILTER (WHERE NOT p.archived AND p.matched_work_id IS NOT NULL AND EXISTS (SELECT 1 FROM paper_claim_table pct WHERE pct.paper_id = p.matched_work_id)) AS causal_extracted_count,
                MIN(p.year) FILTER (WHERE NOT p.archived) AS year_min,
                MAX(p.year) FILTER (WHERE NOT p.archived) AS year_max,
                MAX(p.updated_at) FILTER (WHERE NOT p.archived) AS latest_updated_at
@@ -89,6 +90,7 @@
                count(*) FILTER (WHERE NOT p.archived AND p.status = 'FAILED') AS failed_count,
                count(*) FILTER (WHERE NOT p.archived AND p.status = 'UNSUPPORTED') AS unsupported_count,
                count(*) FILTER (WHERE NOT p.archived AND p.matched_work_id IS NOT NULL) AS matched_count,
+               count(*) FILTER (WHERE NOT p.archived AND p.matched_work_id IS NOT NULL AND EXISTS (SELECT 1 FROM paper_claim_table pct WHERE pct.paper_id = p.matched_work_id)) AS causal_extracted_count,
                MIN(p.year) FILTER (WHERE NOT p.archived) AS year_min,
                MAX(p.year) FILTER (WHERE NOT p.archived) AS year_max,
                MAX(p.updated_at) FILTER (WHERE NOT p.archived) AS latest_updated_at

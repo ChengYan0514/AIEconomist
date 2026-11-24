@@ -4,7 +4,7 @@ import {
 } from "lucide-react"
 import { useEffect, useState, type FormEvent } from "react"
 import { dateLabel, params, useQuery } from "./api"
-import { extractionEntryHref } from "./causal/types"
+import { extractionEntryHref, type CausalOverviewStage2Stats } from "./causal/types"
 import { Drawer } from "./components/drawer"
 import { Empty, Loading, Notice, Pagination } from "./components/shared"
 import { Button } from "./components/ui/button"
@@ -162,7 +162,7 @@ export function Journals() {
           <table className="data-table journal-table">
             <thead><tr>
               <th scope="col">出版来源</th><th scope="col">年份跨度</th><th scope="col">论文数</th>
-              <th scope="col">全文流水线分布</th><th scope="col">OpenAlex 关联</th><th scope="col">操作</th>
+              <th scope="col">因果抽取</th><th scope="col">全文流水线分布</th><th scope="col">OpenAlex 关联</th><th scope="col">操作</th>
             </tr></thead>
             <tbody>{items.map((journal) => {
               const pubPct = pct(journal.publishedCount, journal.totalPapers)
@@ -174,6 +174,10 @@ export function Journals() {
                 </td>
                 <td className="year-cell">{yearLabel(journal.yearMin, journal.yearMax)}</td>
                 <td className="tabular-nums font-medium">{journal.totalPapers.toLocaleString()}</td>
+                <td className="tabular-nums font-medium">
+                  <strong>{(journal.causalExtractedCount ?? 0).toLocaleString()}</strong>
+                  <small className="block muted">已抽取论文</small>
+                </td>
                 <td className="journal-pipeline-cell">
                   <PipelineBar journal={journal} />
                   <small className="journal-bar-caption">
@@ -275,6 +279,7 @@ function JournalDrawer({ sourceId, onClose }: { sourceId: string; onClose: () =>
   const { can, canJob, canProcess } = usePermissions()
   const [processing, setProcessing] = useState(false)
   const result = useQuery<JournalDetail>("/journals/" + encodeURIComponent(sourceId))
+  const causalStats = useQuery<CausalOverviewStage2Stats>("/causal/overview-stats?sourceId=" + encodeURIComponent(sourceId))
   const detail = result.data
   const journal = detail?.journal
 
@@ -308,7 +313,7 @@ function JournalDrawer({ sourceId, onClose }: { sourceId: string; onClose: () =>
           <section>
             <div className="drawer-section-title">
               <h3>全文流水线分布</h3>
-              <span className="muted text-sm">点击任一阶段直接筛查论文</span>
+              <span className="muted text-sm">阶段一 · 点击任一阶段直接筛查论文</span>
             </div>
             <PipelineBar journal={journal} />
             <div className="drawer-status-grid">
@@ -323,6 +328,24 @@ function JournalDrawer({ sourceId, onClose }: { sourceId: string; onClose: () =>
               </a>
               <a className="drawer-stat-tile" data-tone="red" href={"/papers" + params({ sourceId: journal.sourceId, status: "FAILED" })} onClick={onClose}>
                 <span>处理失败</span><strong>{journal.failedCount.toLocaleString()}</strong>
+              </a>
+            </div>
+          </section>
+
+          <section>
+            <div className="drawer-section-title">
+              <h3>因果知识抽取概况</h3>
+              <span className="muted text-sm">阶段二 · LLM因果抽取状态分布</span>
+            </div>
+            <div className="drawer-status-grid">
+              <a className="drawer-stat-tile" data-tone="green" href={"/papers" + params({ sourceId: journal.sourceId, causalStatus: "EXTRACTED" })} onClick={onClose}>
+                <span>成功抽取论文</span><strong>{(causalStats.data?.succeededPapers ?? journal.causalExtractedCount ?? 0).toLocaleString()}</strong>
+              </a>
+              <a className="drawer-stat-tile" data-tone="neutral" href={"/papers" + params({ sourceId: journal.sourceId, causalStatus: "NOT_EXTRACTED" })} onClick={onClose}>
+                <span>未抽取论文</span><strong>{(causalStats.data?.unextractedPapers ?? 0).toLocaleString()}</strong>
+              </a>
+              <a className="drawer-stat-tile" data-tone="red" href={"/papers" + params({ sourceId: journal.sourceId, causalStatus: "FAILED" })} onClick={onClose}>
+                <span>抽取失败论文</span><strong>{(causalStats.data?.failedPapers ?? 0).toLocaleString()}</strong>
               </a>
             </div>
           </section>

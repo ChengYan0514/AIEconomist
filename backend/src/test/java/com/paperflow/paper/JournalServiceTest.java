@@ -19,7 +19,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 class JournalServiceTest {
     @Test
     void normalizesSourceIdAndLoadsDetail() {
-        var summary = new JournalSummary("S123", "Review of Applied Economics", 5, 1, 3, 1, 1, 0, 0, 2, 2020, 2024, OffsetDateTime.now());
+        var summary = new JournalSummary("S123", "Review of Applied Economics", 5, 1, 3, 1, 1, 0, 0, 2, 0, 2020, 2024, OffsetDateTime.now());
         var years = List.of(new JournalYearStats(2024, 2, 2, 0, 0, 0, 0, 1));
         var store = new StubStore(Map.of("S123", summary), Map.of("S123", 42L), Map.of("S123", years));
         var service = new JournalService(store, "dataset_20241125");

@@ -13,6 +13,7 @@ public record JournalSummary(
         long failedCount,
         long unsupportedCount,
         long matchedCount,
+        long causalExtractedCount,
         Integer yearMin,
         Integer yearMax,
         OffsetDateTime latestUpdatedAt

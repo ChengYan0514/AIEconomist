@@ -31,7 +31,7 @@ public final class CausalBatchRunner implements AutoCloseable {
     private final AuditLog audit;
     private final ExecutorService executor;
     private final Duration timeout;
-    private final int maxCalls;
+    private final java.util.function.IntSupplier maxCalls;
     private final Map<UUID, Future<?>> inFlight = new ConcurrentHashMap<>();
 
     public CausalBatchRunner(
@@ -39,6 +39,15 @@ public final class CausalBatchRunner implements AutoCloseable {
             CausalPayloadValidator validator, CausalReadModelRefresher readModel,
             CausalEventHub events, AuditLog audit, ObjectMapper json,
             int maxConcurrency, Duration timeout, int maxCalls
+    ) {
+        this(store, extractor, writer, validator, readModel, events, audit, json, maxConcurrency, timeout, () -> maxCalls);
+    }
+
+    public CausalBatchRunner(
+            CausalBatchStore store, CausalExtractor extractor, CausalFactWriter writer,
+            CausalPayloadValidator validator, CausalReadModelRefresher readModel,
+            CausalEventHub events, AuditLog audit, ObjectMapper json,
+            int maxConcurrency, Duration timeout, java.util.function.IntSupplier maxCalls
     ) {
         this.store = store;
         this.extractor = extractor;
@@ -83,6 +92,10 @@ public final class CausalBatchRunner implements AutoCloseable {
         }
     }
 
+    public CausalPublicationExecutor publisher() {
+        return publisher;
+    }
+
     private void executeRun(BatchRow batch, RunRow run, String actor) {
         try {
             if (isCancelled(batch.batchId())) return;
@@ -93,7 +106,11 @@ public final class CausalBatchRunner implements AutoCloseable {
             }
             EngineRunStatus terminal = obtainEngineResult(batch, run, blocks, inputHash);
             if (isCancelled(batch.batchId())) return;
-            publisher.publish(batch.batchId(), run, inputHash, terminal, actor);
+            if (batch.reviewPolicy() == com.paperflow.causal.model.ReviewPolicy.MANUAL_REVIEW) {
+                publisher.holdForReview(batch.batchId(), run, terminal, actor);
+            } else {
+                publisher.publish(batch.batchId(), run, inputHash, terminal, actor);
+            }
         } catch (InterruptedException interrupted) {
             Thread.currentThread().interrupt();
             handleFailure(batch.batchId(), run, actor, "CANCELLED", "运行已中断");
@@ -115,7 +132,7 @@ public final class CausalBatchRunner implements AutoCloseable {
             EngineRunStatus existing = safePoll(run.engineRunId());
             if (existing != null && "SUCCEEDED".equals(existing.status()) && existing.resultJson() != null) return existing;
         }
-        String engineId = extractor.submit(run.runId(), run.workId(), batch.mode(), maxCalls, run.engineRunId(), blocks);
+        String engineId = extractor.submit(run.runId(), run.workId(), batch.mode(), maxCalls.getAsInt(), run.engineRunId(), blocks);
         if (isCancelled(batch.batchId())) {
             extractor.cancel(engineId);
             throw new InterruptedException("Cancelled");

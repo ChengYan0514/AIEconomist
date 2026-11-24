@@ -8,6 +8,8 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
+import java.util.function.BooleanSupplier;
+import java.util.function.Supplier;
 
 public final class SystemStatus implements AutoCloseable {
     public static final Duration CHECK_TIMEOUT = Duration.ofSeconds(2);
@@ -20,9 +22,13 @@ public final class SystemStatus implements AutoCloseable {
         void run() throws Exception;
     }
 
-    public record Probe(Dependency dependency, Check check, String success, String failure, String timeout, boolean enabled, String disabledMessage) {
+    public record Probe(Dependency dependency, Check check, String success, String failure, String timeout, BooleanSupplier enabled, String disabledMessage) {
         public Probe(Dependency dependency, Check check, String success, String failure, String timeout) {
-            this(dependency, check, success, failure, timeout, true, "");
+            this(dependency, check, success, failure, timeout, () -> true, "");
+        }
+
+        public Probe(Dependency dependency, Check check, String success, String failure, String timeout, boolean enabled, String disabledMessage) {
+            this(dependency, check, success, failure, timeout, () -> enabled, disabledMessage);
         }
     }
     public record Result(Dependency dependency, State state, Instant checkedAt, String message) {}
@@ -34,9 +40,13 @@ public final class SystemStatus implements AutoCloseable {
 
     private final ExecutorService executor;
     private final List<ProbeRun> probes;
-    private final Configuration configuration;
+    private final Supplier<Configuration> configuration;
 
     public SystemStatus(List<Probe> probes, Configuration configuration) {
+        this(probes, () -> configuration);
+    }
+
+    public SystemStatus(List<Probe> probes, Supplier<Configuration> configuration) {
         executor = Executors.newFixedThreadPool(probes.size(), task -> {
             var thread = new Thread(task, "system-status-probe");
             thread.setDaemon(true);
@@ -48,7 +58,7 @@ public final class SystemStatus implements AutoCloseable {
 
     public Report refresh() {
         var pending = probes.stream().map(ProbeRun::start).toList();
-        return new Report(pending.stream().map(CompletableFuture::join).toList(), configuration);
+        return new Report(pending.stream().map(CompletableFuture::join).toList(), configuration.get());
     }
 
     @Override
@@ -83,7 +93,7 @@ public final class SystemStatus implements AutoCloseable {
         }
 
         private Result inspect() {
-            if (!probe.enabled()) {
+            if (!probe.enabled().getAsBoolean()) {
                 return new Result(probe.dependency(), State.NOT_CHECKED, null, probe.disabledMessage());
             }
             try {

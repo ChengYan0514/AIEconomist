@@ -45,6 +45,18 @@ final class CausalPublicationExecutor {
         return blocks;
     }
 
+    void holdForReview(UUID batchId, RunRow run, EngineRunStatus terminal, String actor) {
+        if (terminal.resultJson() == null) throw new IllegalStateException("INVALID_RESULT: 引擎未返回结构化抽取结果");
+        var validated = validator.parseAndValidate(run.workId(), terminal.resultJson());
+        var editableClaims = validator.toEditableClaims(validated.rows());
+        String draftPayloadJson = writeJson(editableClaims);
+        String metricsJson = writeJson(validated.metrics());
+        store.markPendingReview(run.runId(), draftPayloadJson, metricsJson);
+        audit.record(actor, "CAUSAL_RUN_HELD_FOR_REVIEW", "CAUSAL_RUN", run.runId().toString(), AuditOutcome.SUCCEEDED,
+                Map.of("batchId", batchId.toString(), "workId", run.workId(), "claims", validated.rows().size()));
+        emit(batchId, run, RunStatus.PENDING_REVIEW, RunStage.PUBLISH, validated.metrics(), null);
+    }
+
     void publish(UUID batchId, RunRow run, String inputHash, EngineRunStatus terminal, String actor) {
         if (terminal.resultJson() == null) throw new IllegalStateException("INVALID_RESULT: 引擎未返回结构化抽取结果");
         var validated = validator.parseAndValidate(run.workId(), terminal.resultJson());
@@ -63,6 +75,26 @@ final class CausalPublicationExecutor {
                         "claims", outcome.rowCount(), "alreadyApplied", outcome.alreadyApplied()));
         emit(batchId, run, RunStatus.SUCCEEDED, RunStage.PUBLISH, validated.metrics(), null);
         readModel.refreshAsync();
+        store.finalizeBatchIfComplete(batchId);
+    }
+
+    void publishValidatedClaims(UUID batchId, RunRow run, String inputHash, CausalPayloadValidator.ValidatedResult validated, String actor) {
+        writer.checkNoLegacyDuplicates(run.workId(), validated.rows());
+        var currentBlocks = verifyBlocks(run);
+        if (!inputHash.equals(validator.inputHash(run.paperId(), run.workId(), run.sourceId(), currentBlocks))) {
+            throw new IllegalStateException("INPUT_CHANGED: 发布前检测到全文或关联已变化，已保留产物未入库");
+        }
+        String metricsJson = writeJson(validated.metrics());
+        store.markPublishing(run.runId(), metricsJson);
+        emit(batchId, run, RunStatus.PUBLISHING, RunStage.PUBLISH, validated.metrics(), null);
+        var outcome = writer.publishIdempotently(run.runId(), run.workId(), validated.payloadHash(), validated.rows());
+        store.markSucceeded(run.runId(), metricsJson);
+        audit.record(actor, "CAUSAL_RUN_PUBLISHED_FROM_REVIEW", "CAUSAL_RUN", run.runId().toString(), AuditOutcome.SUCCEEDED,
+                Map.of("batchId", batchId.toString(), "workId", run.workId(),
+                        "claims", outcome.rowCount(), "alreadyApplied", outcome.alreadyApplied()));
+        emit(batchId, run, RunStatus.SUCCEEDED, RunStage.PUBLISH, validated.metrics(), null);
+        readModel.refreshAsync();
+        store.finalizeBatchIfComplete(batchId);
     }
 
     void emit(UUID batchId, RunRow run, RunStatus status, RunStage stage, RunMetrics metrics, String code) {
