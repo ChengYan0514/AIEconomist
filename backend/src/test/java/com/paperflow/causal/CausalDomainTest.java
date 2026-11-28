@@ -2,6 +2,8 @@ package com.paperflow.causal;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.paperflow.causal.extraction.CausalExtractionModels.BlockExportRow;
+import com.paperflow.causal.extraction.CausalExtractionModels.EditableClaimItem;
+import com.paperflow.causal.extraction.CausalExtractionModels.RunMetrics;
 import com.paperflow.causal.extraction.CausalPayloadValidator;
 import com.paperflow.causal.graph.CausalFactReader.*;
 import com.paperflow.causal.graph.CausalProjectionBuilder;
@@ -115,5 +117,15 @@ class CausalDomainTest {
 
         assertThatThrownBy(() -> validator.parseAndValidate("W999", validJson))
                 .isInstanceOf(IllegalArgumentException.class).hasMessageContaining("INVALID_RESULT");
+
+        var edited = validator.parseAndValidateEditedClaims("W123", List.of(
+                new EditableClaimItem("c1", "Minimum Wage", "Employment", "", " ", true, "NA", "", null, "certain", null, "Long verbatim quote")
+        ), RunMetrics.empty());
+        assertThat(edited.rows()).hasSize(1);
+        assertThat(edited.rows().get(0).claim()).isEqualTo("Minimum Wage -> Employment");
+        assertThat(edited.rows().get(0).signOfImpact()).isEqualTo("ambiguous");
+        assertThat(edited.rows().get(0).typeOfRelationship()).isEqualTo("other");
+        assertThat(edited.rows().get(0).causalInferenceMethod()).isEqualTo("Do not know");
+        assertThat(edited.rows().get(0).evidence()).isEqualTo("Long verbatim quote");
     }
 }

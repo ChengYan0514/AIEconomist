@@ -46,19 +46,21 @@ public final class CausalPayloadValidator {
                 }
                 String cause = item.cause().strip();
                 String effect = item.effect().strip();
-                String hash = claimHash(cause, effect);
-                String claimText = (item.evidence() != null && !item.evidence().isBlank()) ? item.evidence() : (cause + " -> " + effect);
+                String claimCause = clamp(cause, 255);
+                String claimEffect = clamp(effect, 255);
+                String hash = claimHash(claimCause, claimEffect);
+                String claimText = cause + " -> " + effect;
                 rows.add(new ClaimPayloadRow(
-                        workId, cause, effect, hash, claimText, cause, effect,
-                        Objects.requireNonNullElse(item.signOfImpact(), "positive"),
-                        Objects.requireNonNullElse(item.typeOfRelationship(), "direct effect"),
-                        Objects.requireNonNullElse(item.evidence(), ""),
-                        Objects.requireNonNullElse(item.causalInferenceMethod(), "Other"),
+                        workId, claimCause, claimEffect, hash, claimText, cause, effect,
+                        clamp(nonBlankOr(item.signOfImpact(), "ambiguous"), 50),
+                        clamp(nonBlankOr(item.typeOfRelationship(), "other"), 100),
+                        nonBlankOr(item.evidence(), claimText),
+                        clamp(nonBlankOr(item.causalInferenceMethod(), "Do not know"), 100),
                         item.evidenceMethodOtherDescription(),
                         item.isMainContribution(),
-                        item.levelOfTentativeness(),
+                        clamp(item.levelOfTentativeness(), 50),
                         item.sourcesOfExogenousVariation(),
-                        item.statisticalSignificance(),
+                        clamp(item.statisticalSignificance(), 100),
                         null, null
                 ));
             }
@@ -181,6 +183,15 @@ public final class CausalPayloadValidator {
 
     private static boolean isAscii(String value) {
         return value.chars().allMatch(c -> c < 128);
+    }
+
+    private static String nonBlankOr(String value, String fallback) {
+        return value == null || value.isBlank() ? fallback : value.strip();
+    }
+
+    private static String clamp(String value, int maxLen) {
+        if (value == null) return null;
+        return value.length() > maxLen ? value.substring(0, maxLen) : value;
     }
 
     public record ValidatedResult(List<ClaimPayloadRow> rows, String payloadHash, RunMetrics metrics) {}

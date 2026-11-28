@@ -92,9 +92,10 @@ final class JdbcCausalBatchQuery {
                 rs.getTimestamp("finished_at") == null ? null : rs.getTimestamp("finished_at").toInstant());
     }
 
-    private String deriveStatus(boolean cancelled, int q, int r, int pr, int p, int s, int f, int c) {
-        if (r + p > 0 || pr > 0) return "RUNNING";
+    static String deriveStatus(boolean cancelled, int q, int r, int pr, int p, int s, int f, int c) {
+        if (r + p > 0) return "RUNNING";
         if (q > 0) return "QUEUED";
+        if (pr > 0) return "PENDING_REVIEW";
         if (cancelled && s == 0 && f == 0) return "CANCELLED";
         if (f > 0 && s > 0) return "PARTIAL";
         if (f > 0) return "FAILED";

@@ -16,6 +16,7 @@ import {
 const BATCH_STATUS: Record<CausalBatchView["status"], [string, string]> = {
   QUEUED: ["排队中", "neutral"],
   RUNNING: ["执行中", "blue"],
+  PENDING_REVIEW: ["待审核", "amber"],
   SUCCEEDED: ["已完成", "green"],
   PARTIAL: ["部分成功", "amber"],
   FAILED: ["失败", "red"],
@@ -243,7 +244,11 @@ export function CausalExtractionPage() {
                   <td><BatchStatusChip status={batch.status} zeroClaimPapers={batch.zeroClaimPapers} total={batch.total} /></td>
                   <td><span className="role-pill">{batch.ingestionMode === "RAW" ? "原始变量（默认）" : "标准变量"}</span></td>
                   <td className="tabular-nums text-sm">
-                    <div>处理完成 {batch.succeeded} 篇 / 失败 {batch.failed} 篇 / 跳过 {batch.skipped} 篇 / 总计 {batch.total} 篇</div>
+                    <div>
+                      处理完成 {batch.succeeded} 篇
+                      {(batch.pendingReview ?? 0) > 0 && <> / 待审核 {batch.pendingReview} 篇</>}
+                      {" / "}失败 {batch.failed} 篇 / 跳过 {batch.skipped} 篇 / 总计 {batch.total} 篇
+                    </div>
                     <div className="muted">因果关系 <strong>{batch.totalClaims}</strong> 条；未抽到关系 {batch.zeroClaimPapers} 篇</div>
                   </td>
                   <td className="tabular-nums">{batch.callsUsed.toLocaleString()}</td>

@@ -277,7 +277,7 @@ export interface CausalBatchView {
   batchId: string
   ingestionMode: CausalIngestionMode
   reviewPolicy?: CausalReviewPolicy
-  status: "QUEUED" | "RUNNING" | "SUCCEEDED" | "PARTIAL" | "FAILED" | "CANCELLED"
+  status: "QUEUED" | "RUNNING" | "PENDING_REVIEW" | "SUCCEEDED" | "PARTIAL" | "FAILED" | "CANCELLED"
   cancelled: boolean
   scope: Record<string, unknown>
   configSnapshot: Record<string, unknown>

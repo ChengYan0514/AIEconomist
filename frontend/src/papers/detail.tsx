@@ -1,7 +1,7 @@
 import { Archive, ArrowLeft, BookOpen, Check, ClipboardList, Copy, Database, Download, ExternalLink, FileText, ListTree, Network, Pencil, Play, RotateCcw, ScanText, Sparkles, UploadCloud } from "lucide-react"
 import { useState } from "react"
 import { api, dateLabel, errorMessage, jobPath, paperPath, params, useQuery } from "../api"
-import { extractionEntryHref, paperClaimsPath, type CausalPaperSummary, type PaperCausalStatusInfo } from "../causal/types"
+import { extractionEntryHref, paperClaimsPath, type CausalPaperSummary, type PaperCausalStatusInfo, type RunReviewDraft } from "../causal/types"
 import { ReviewWorkbenchModal } from "../causal/review-workbench"
 import { Chip, Empty, JobChip, Loading, Modal, Notice, Pagination, jobKinds } from "../components/shared"
 import { Button } from "../components/ui/button"
@@ -138,9 +138,24 @@ function CausalPaperCard({ paper, canExtract }: { paper: Paper; canExtract: bool
   const cInfo = causalStatusRes.data
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState("")
-  const [reviewOpen, setReviewOpen] = useState(false)
+  const [loadingReview, setLoadingReview] = useState(false)
+  const [reviewDraft, setReviewDraft] = useState<RunReviewDraft | null>(null)
 
   const canStart = canExtract && !paper.archived && paper.status === "PUBLISHED" && Boolean(workId)
+
+  async function openReview() {
+    if (!cInfo?.activeRunId) return
+    setLoadingReview(true)
+    setError("")
+    try {
+      const draft = await api<RunReviewDraft>(`/causal/runs/${encodeURIComponent(cInfo.activeRunId)}/review`)
+      setReviewDraft(draft)
+    } catch (e) {
+      setError(errorMessage(e))
+    } finally {
+      setLoadingReview(false)
+    }
+  }
 
   async function handleDirectExtract() {
     setBusy(true)
@@ -217,8 +232,8 @@ function CausalPaperCard({ paper, canExtract }: { paper: Paper; canExtract: bool
         </p>
         <div className="card-actions">
           {canExtract && cInfo?.activeRunId && (
-            <Button type="button" onClick={() => setReviewOpen(true)}>
-              打开审核表单
+            <Button type="button" disabled={loadingReview} onClick={openReview}>
+              {loadingReview ? "正在加载审核草稿…" : "打开审核表单"}
             </Button>
           )}
         </div>
@@ -287,18 +302,10 @@ function CausalPaperCard({ paper, canExtract }: { paper: Paper; canExtract: bool
       </div>
     )}
 
-    {reviewOpen && cInfo?.activeRunId && (
+    {reviewDraft && cInfo?.activeRunId && (
       <ReviewWorkbenchModal
-        drafts={[{
-          runId: cInfo.activeRunId,
-          batchId: cInfo.activeBatchId || "",
-          paperId: paper.paperId,
-          workId: workId || "",
-          paperTitle: paper.title || paper.paperId,
-          status: "PENDING_REVIEW",
-          claims: [],
-        }]}
-        onClose={() => setReviewOpen(false)}
+        drafts={[reviewDraft]}
+        onClose={() => setReviewDraft(null)}
         onSubmit={async (drafts) => {
           if (drafts[0]) {
             await api(`/causal/runs/${encodeURIComponent(cInfo.activeRunId!)}/review`, {
