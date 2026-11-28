@@ -4,7 +4,6 @@ from __future__ import annotations
 import csv
 import hashlib
 import inspect
-import ipaddress
 import json
 import os
 import shutil
@@ -16,7 +15,6 @@ import uuid
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from typing import Any
-from urllib.parse import urlparse
 
 import yaml
 from fastapi import FastAPI, HTTPException
@@ -94,63 +92,11 @@ class RunRequest(BaseModel):
     modelConfig: ModelConfigOverride | None = None
 
 
-def _is_local_host(host: str) -> bool:
-    if not host:
-        return False
-    if host in ("localhost", "host.docker.internal") or host.endswith(".local"):
-        return True
-    try:
-        ip = ipaddress.ip_address(host)
-        return ip.is_loopback or ip.is_private
-    except ValueError:
-        return False
-
-
-def resolve_thinking_extra_body(
-    base_url: str,
-    model: str,
-    enable_thinking: bool,
-    thinking_style: str = "AUTO",
-) -> dict[str, Any]:
-    style = (thinking_style or "AUTO").strip().upper()
-    if style == "AUTO":
-        parsed = urlparse(base_url or "")
-        host = (parsed.hostname or "").lower()
-        port = parsed.port
-        m = (model or "").lower()
-        if any(d in host for d in ("deepseek.com", "volces.com", "bigmodel.cn")):
-            style = "THINKING_OBJECT"
-        elif any(d in host for d in ("dashscope.aliyuncs.com", "siliconflow.", "modelscope.")):
-            style = "ENABLE_THINKING"
-        elif port == 11434 or "ollama" in host:
-            style = "OLLAMA_THINK"
-        elif "openai.com" in host or "generativelanguage.googleapis.com" in host:
-            if any(m.startswith(p) for p in ("o1", "o3", "o4", "gpt-5", "gemini-2.5", "gemini-3")):
-                style = "REASONING_EFFORT"
-            else:
-                style = "NONE"
-        elif _is_local_host(host):
-            style = "CHAT_TEMPLATE_KWARGS"
-        elif any(k in m for k in ("deepseek", "glm-4.5", "glm-4.6", "glm-5")):
-            style = "THINKING_OBJECT"
-        elif any(k in m for k in ("qwen3", "qwen-3", "qwq")):
-            style = "ENABLE_THINKING"
-        else:
-            style = "NONE"
-
-    if style == "NONE":
-        return {}
-    if style == "THINKING_OBJECT":
-        return {"thinking": {"type": "enabled" if enable_thinking else "disabled"}}
-    if style == "ENABLE_THINKING":
-        return {"enable_thinking": bool(enable_thinking)}
-    if style == "CHAT_TEMPLATE_KWARGS":
-        return {"chat_template_kwargs": {"enable_thinking": bool(enable_thinking)}}
-    if style == "OLLAMA_THINK":
-        return {"think": bool(enable_thinking)}
-    if style == "REASONING_EFFORT":
-        return {"reasoning_effort": "medium" if enable_thinking else "none"}
-    return {}
+from engine.provider_compat import (
+    resolve_chat_compat,
+    resolve_embedding_compat,
+    resolve_thinking_extra_body,
+)
 
 
 def _load_effective_config(model_override: ModelConfigOverride | None = None) -> dict[str, Any]:
@@ -196,6 +142,16 @@ def _load_effective_config(model_override: ModelConfigOverride | None = None) ->
         chat["extra_body"] = extra_body
     else:
         chat.pop("extra_body", None)
+
+    chat["compat"] = resolve_chat_compat(
+        str(chat.get("base_url") or ""),
+        str(chat.get("model") or ""),
+        enable_thinking,
+    )
+    emb["compat"] = resolve_embedding_compat(
+        str(emb.get("base_url") or ""),
+        str(emb.get("model") or ""),
+    )
 
     chat.pop("api_key", None)
     emb.pop("api_key", None)
