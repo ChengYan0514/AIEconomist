@@ -1,8 +1,13 @@
 package com.paperflow.paper.model;
 
 public record PaperFilter(
-        String q, String sourceId, Integer yearFrom, Integer yearTo, PaperStatus status, boolean archived
+        String q, String sourceId, Integer yearFrom, Integer yearTo, PaperStatus status,
+        CausalStatus causalStatus, boolean archived
 ) {
+    public PaperFilter(String q, String sourceId, Integer yearFrom, Integer yearTo, PaperStatus status, boolean archived) {
+        this(q, sourceId, yearFrom, yearTo, status, null, archived);
+    }
+
     public PaperFilter {
         q = q == null || q.isBlank() ? null : q.strip();
         if (q != null && q.length() > 200) throw new IllegalArgumentException("搜索词最多 200 个字符");

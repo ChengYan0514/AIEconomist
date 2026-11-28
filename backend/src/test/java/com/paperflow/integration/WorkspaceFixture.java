@@ -67,6 +67,7 @@ final class WorkspaceFixture implements AutoCloseable {
         properties.add("paperflow.legacy-storage", fixture::legacy);
         properties.add("paperflow.mineru-url", fixture::mineru);
         properties.add("paperflow.mineru-timeout", () -> "PT5S");
+        properties.add("paperflow.journal-cache-ttl", () -> "PT0S");
         properties.add("paperflow.causal.engine-url", fixture::causalEngineUrl);
         properties.add("paperflow.admin-username", () -> "integration");
         properties.add("paperflow.admin-password", () -> "workspace-test-password");

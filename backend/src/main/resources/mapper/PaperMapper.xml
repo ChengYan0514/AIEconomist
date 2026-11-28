@@ -1,44 +1,162 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
 <mapper namespace="com.paperflow.adapters.persistence.PaperMapper">
+    <sql id="causalFields">
+        CASE
+            WHEN lr.status IN ('QUEUED', 'RUNNING', 'PUBLISHING') THEN 'EXTRACTING'
+            WHEN lr.status = 'PENDING_REVIEW' THEN 'PENDING_REVIEW'
+            WHEN COALESCE(cc.claim_count, 0) &gt; 0 THEN 'EXTRACTED'
+            WHEN lr.status = 'FAILED' THEN 'FAILED'
+            WHEN lr.status = 'SUCCEEDED' THEN 'EXTRACTED_NO_CAUSAL'
+            WHEN p.matched_work_id IS NULL OR btrim(p.matched_work_id) = '' OR p.status &lt;&gt; 'PUBLISHED' THEN 'PREREQUISITE_MISSING'
+            ELSE 'NOT_EXTRACTED'
+        END AS causal_status,
+        COALESCE(cc.claim_count, 0)::int AS causal_claim_count
+    </sql>
+    <sql id="causalJoins">
+        <choose>
+            <when test="claims == null">
+                LEFT JOIN LATERAL (
+                    SELECT count(*)::int AS claim_count
+                    FROM paper_claim_table pct
+                    WHERE p.matched_work_id IS NOT NULL AND pct.paper_id = p.matched_work_id
+                ) cc ON true
+            </when>
+            <otherwise>
+                LEFT JOIN (
+                    SELECT work_id, claim_count::int AS claim_count
+                    FROM unnest(
+                        #{claims.workIds, typeHandler=com.paperflow.adapters.persistence.PgVarcharArrayTypeHandler},
+                        #{claims.counts, typeHandler=com.paperflow.adapters.persistence.PgBigintArrayTypeHandler}
+                    ) AS u(work_id, claim_count)
+                ) cc ON p.matched_work_id IS NOT NULL AND cc.work_id = p.matched_work_id
+            </otherwise>
+        </choose>
+        LEFT JOIN LATERAL (
+            SELECT r.status
+            FROM v2_causal_run r
+            WHERE r.paper_id = p.paper_id
+            ORDER BY r.updated_at DESC
+            LIMIT 1
+        ) lr ON true
+    </sql>
+    <sql id="hasClaimsPredicate">
+        <choose>
+            <when test="claims == null">
+                EXISTS (SELECT 1 FROM paper_claim_table pct WHERE pct.paper_id = p.matched_work_id)
+            </when>
+            <otherwise>
+                p.matched_work_id = ANY(#{claims.workIds, typeHandler=com.paperflow.adapters.persistence.PgVarcharArrayTypeHandler})
+            </otherwise>
+        </choose>
+    </sql>
     <sql id="readWithSource">
         SELECT p.paper_id, p.legacy, p.source_id, os.display_name AS source_name, p.year,
                p.title, p.authors, p.doi, p.url, p.provider, p.original_name,
                p.original_path, p.original_type, p.original_size, p.revision,
                p.version, p.archived, p.matched_work_id, p.latest_parse_id,
-               p.published_parse_id, p.status, p.updated_at
+               p.published_parse_id, p.status, <include refid="causalFields"/>, p.updated_at
         FROM v2_paper_read p
         LEFT JOIN ${schema}.sources os ON os.id = p.source_id
+        <include refid="causalJoins"/>
     </sql>
     <sql id="filter">
         WHERE p.archived = #{filter.archived}
         <if test="filter.q != null">
-            AND (strpos(lower(p.title), lower(#{filter.q})) > 0
-              OR strpos(lower(p.paper_id), lower(#{filter.q})) > 0
-              OR strpos(lower(p.authors), lower(#{filter.q})) > 0
-              OR strpos(lower(p.doi), lower(#{filter.q})) > 0)
+            AND (strpos(lower(p.title), lower(#{filter.q})) &gt; 0
+              OR strpos(lower(p.paper_id), lower(#{filter.q})) &gt; 0
+              OR strpos(lower(p.authors), lower(#{filter.q})) &gt; 0
+              OR strpos(lower(p.doi), lower(#{filter.q})) &gt; 0)
         </if>
         <if test="filter.sourceId != null">AND p.source_id = #{filter.sourceId}</if>
         <if test="filter.yearFrom != null">AND p.year &gt;= #{filter.yearFrom}</if>
         <if test="filter.yearTo != null">AND p.year &lt;= #{filter.yearTo}</if>
         <if test="filter.status != null">AND p.status = #{filter.status}</if>
+        <if test="filter.causalStatus != null">
+            <choose>
+                <when test="filter.causalStatus.name() == 'EXTRACTING'">
+                    AND EXISTS (SELECT 1 FROM v2_causal_run r0 WHERE r0.paper_id = p.paper_id AND r0.status IN ('QUEUED', 'RUNNING', 'PUBLISHING'))
+                    AND (SELECT r.status FROM v2_causal_run r WHERE r.paper_id = p.paper_id ORDER BY r.updated_at DESC LIMIT 1)
+                        IN ('QUEUED', 'RUNNING', 'PUBLISHING')
+                </when>
+                <when test="filter.causalStatus.name() == 'PENDING_REVIEW'">
+                    AND EXISTS (SELECT 1 FROM v2_causal_run r0 WHERE r0.paper_id = p.paper_id AND r0.status = 'PENDING_REVIEW')
+                    AND (SELECT r.status FROM v2_causal_run r WHERE r.paper_id = p.paper_id ORDER BY r.updated_at DESC LIMIT 1)
+                        = 'PENDING_REVIEW'
+                </when>
+                <when test="filter.causalStatus.name() == 'EXTRACTED'">
+                    AND p.matched_work_id IS NOT NULL
+                    AND <include refid="hasClaimsPredicate"/>
+                    AND COALESCE((SELECT r.status FROM v2_causal_run r WHERE r.paper_id = p.paper_id ORDER BY r.updated_at DESC LIMIT 1), '')
+                        NOT IN ('QUEUED', 'RUNNING', 'PUBLISHING', 'PENDING_REVIEW')
+                </when>
+                <when test="filter.causalStatus.name() == 'FAILED'">
+                    AND EXISTS (SELECT 1 FROM v2_causal_run r0 WHERE r0.paper_id = p.paper_id AND r0.status = 'FAILED')
+                    AND (SELECT r.status FROM v2_causal_run r WHERE r.paper_id = p.paper_id ORDER BY r.updated_at DESC LIMIT 1)
+                        = 'FAILED'
+                    AND NOT (p.matched_work_id IS NOT NULL AND <include refid="hasClaimsPredicate"/>)
+                </when>
+                <when test="filter.causalStatus.name() == 'EXTRACTED_NO_CAUSAL'">
+                    AND EXISTS (SELECT 1 FROM v2_causal_run r0 WHERE r0.paper_id = p.paper_id AND r0.status = 'SUCCEEDED')
+                    AND (SELECT r.status FROM v2_causal_run r WHERE r.paper_id = p.paper_id ORDER BY r.updated_at DESC LIMIT 1)
+                        = 'SUCCEEDED'
+                    AND NOT (p.matched_work_id IS NOT NULL AND <include refid="hasClaimsPredicate"/>)
+                </when>
+                <when test="filter.causalStatus.name() == 'PREREQUISITE_MISSING'">
+                    AND (p.matched_work_id IS NULL OR btrim(p.matched_work_id) = '' OR p.status &lt;&gt; 'PUBLISHED')
+                    AND NOT (p.matched_work_id IS NOT NULL AND <include refid="hasClaimsPredicate"/>)
+                    AND COALESCE((SELECT r.status FROM v2_causal_run r WHERE r.paper_id = p.paper_id ORDER BY r.updated_at DESC LIMIT 1), '')
+                        NOT IN ('QUEUED', 'RUNNING', 'PUBLISHING', 'PENDING_REVIEW', 'FAILED', 'SUCCEEDED')
+                </when>
+                <when test="filter.causalStatus.name() == 'NOT_EXTRACTED'">
+                    AND p.matched_work_id IS NOT NULL AND btrim(p.matched_work_id) &lt;&gt; '' AND p.status = 'PUBLISHED'
+                    AND NOT (<include refid="hasClaimsPredicate"/>)
+                    AND COALESCE((SELECT r.status FROM v2_causal_run r WHERE r.paper_id = p.paper_id ORDER BY r.updated_at DESC LIMIT 1), '')
+                        NOT IN ('QUEUED', 'RUNNING', 'PUBLISHING', 'PENDING_REVIEW', 'FAILED', 'SUCCEEDED')
+                </when>
+            </choose>
+        </if>
     </sql>
-    <select id="get" resultType="com.paperflow.paper.model.Paper">
+    <select id="getWithClaims" resultType="com.paperflow.paper.model.Paper">
         <include refid="readWithSource"/> WHERE p.paper_id = #{id}
     </select>
-    <select id="getMany" resultType="com.paperflow.paper.model.Paper">
+    <select id="getManyWithClaims" resultType="com.paperflow.paper.model.Paper">
         <include refid="readWithSource"/> WHERE p.paper_id IN
         <foreach collection="ids" item="id" open="(" separator="," close=")">#{id}</foreach>
     </select>
-    <select id="list" resultType="com.paperflow.paper.model.Paper">
-        <include refid="readWithSource"/> <include refid="filter"/>
-        ORDER BY p.updated_at DESC NULLS LAST, p.paper_id OFFSET #{offset} LIMIT #{size}
-    </select>
-    <select id="selectExport" resultType="com.paperflow.paper.model.Paper" fetchSize="500" resultSetType="FORWARD_ONLY">
-        <include refid="readWithSource"/> <include refid="filter"/>
+    <select id="listWithClaims" resultType="com.paperflow.paper.model.Paper">
+        WITH page_rows AS (
+            SELECT p.paper_id, p.legacy, p.source_id, p.year, p.title, p.authors, p.doi, p.url, p.provider,
+                   p.original_name, p.original_path, p.original_type, p.original_size, p.revision,
+                   p.version, p.archived, p.matched_work_id, p.latest_parse_id, p.published_parse_id,
+                   p.status, p.updated_at
+            FROM v2_paper_read p
+            <include refid="filter"/>
+            ORDER BY p.updated_at DESC NULLS LAST, p.paper_id
+            OFFSET #{offset} LIMIT #{size}
+        )
+        SELECT p.paper_id, p.legacy, p.source_id, os.display_name AS source_name, p.year,
+               p.title, p.authors, p.doi, p.url, p.provider, p.original_name,
+               p.original_path, p.original_type, p.original_size, p.revision,
+               p.version, p.archived, p.matched_work_id, p.latest_parse_id,
+               p.published_parse_id, p.status, <include refid="causalFields"/>, p.updated_at
+        FROM page_rows p
+        LEFT JOIN ${schema}.sources os ON os.id = p.source_id
+        <include refid="causalJoins"/>
         ORDER BY p.updated_at DESC NULLS LAST, p.paper_id
     </select>
-    <select id="count" resultType="long">
+    <select id="selectExportWithClaims" resultType="com.paperflow.paper.model.Paper" fetchSize="500" resultSetType="FORWARD_ONLY">
+        SELECT p.paper_id, p.legacy, p.source_id, os.display_name AS source_name, p.year,
+               p.title, p.authors, p.doi, p.url, p.provider, p.original_name,
+               p.original_path, p.original_type, p.original_size, p.revision,
+               p.version, p.archived, p.matched_work_id, p.latest_parse_id,
+               p.published_parse_id, p.status, NULL::varchar AS causal_status, 0::int AS causal_claim_count, p.updated_at
+        FROM v2_paper_read p
+        LEFT JOIN ${schema}.sources os ON os.id = p.source_id
+        <include refid="filter"/>
+        ORDER BY p.updated_at DESC NULLS LAST, p.paper_id
+    </select>
+    <select id="countWithClaims" resultType="long">
         SELECT count(*) FROM v2_paper_read p <include refid="filter"/>
     </select>
     <select id="atSourceYear" resultType="com.paperflow.paper.manage.PaperStore$IdentityRow">

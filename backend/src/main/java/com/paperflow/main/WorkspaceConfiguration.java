@@ -5,8 +5,13 @@ import com.paperflow.adapters.files.FileStorage;
 import com.paperflow.adapters.files.MineruContent;
 import com.paperflow.adapters.files.MineruTasks;
 import com.paperflow.adapters.files.ZipOriginalArchive;
+import com.paperflow.adapters.persistence.JournalMapper;
+import com.paperflow.adapters.persistence.PaperMapper;
+import com.paperflow.adapters.persistence.RemoteCausalJournalStore;
+import com.paperflow.adapters.persistence.RemoteCausalPaperStore;
 import com.paperflow.adapters.web.AuditAttempt;
 import com.paperflow.audit.AuditLog;
+import com.paperflow.causal.graph.CausalFactReader;
 import com.paperflow.fulltext.FullTextService;
 import com.paperflow.fulltext.FullTextStore;
 import com.paperflow.fulltext.ParsedContent;
@@ -37,14 +42,18 @@ class WorkspaceConfiguration {
     }
 
     @Bean
-    PaperService paperService(PaperStore store, FileStorage files, TransactionTemplate transactions,
+    PaperService paperService(PaperMapper mapper, CausalFactReader causalFacts, CausalProperties causal,
+                              FileStorage files, TransactionTemplate transactions,
                               WorkspaceProperties config, AuditLog audit) {
+        PaperStore store = causal.hasSeparateDatasource() ? new RemoteCausalPaperStore(mapper, causalFacts) : mapper;
         return new PaperService(store, files, transactions, config.openalexSchema(), audit);
     }
 
     @Bean
-    JournalService journalService(JournalStore store, WorkspaceProperties config) {
-        return new JournalService(store, config.openalexSchema());
+    JournalService journalService(JournalMapper mapper, CausalFactReader causalFacts, CausalProperties causal,
+                                  WorkspaceProperties config) {
+        JournalStore store = causal.hasSeparateDatasource() ? new RemoteCausalJournalStore(mapper, causalFacts) : mapper;
+        return new JournalService(store, config.openalexSchema(), config.journalCacheTtl());
     }
 
     @Bean

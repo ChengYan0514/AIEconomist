@@ -41,6 +41,7 @@ paperflow:
   mineru-url: ${PAPERFLOW_MINERU_URL:http://127.0.0.1:${PAPERFLOW_MINERU_PORT:18002}}
   mineru-tier: ${PAPERFLOW_MINERU_TIER:}
   mineru-timeout: ${PAPERFLOW_MINERU_TIMEOUT:PT1H}
+  journal-cache-ttl: ${PAPERFLOW_JOURNAL_CACHE_TTL:PT15S}
   admin-username: ${PAPERFLOW_ADMIN_USERNAME:}
   admin-password: ${PAPERFLOW_ADMIN_PASSWORD:}
   job-delay: ${PAPERFLOW_JOB_DELAY:1000}

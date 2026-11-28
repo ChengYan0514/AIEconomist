@@ -4,7 +4,7 @@ import {
 } from "lucide-react"
 import { useEffect, useState, type FormEvent } from "react"
 import { dateLabel, params, useQuery } from "./api"
-import { extractionEntryHref, type CausalOverviewStage2Stats } from "./causal/types"
+import { extractionEntryHref } from "./causal/types"
 import { Drawer } from "./components/drawer"
 import { Empty, Loading, Notice, Pagination } from "./components/shared"
 import { Button } from "./components/ui/button"
@@ -27,9 +27,10 @@ const filterOptions: { value: JournalFilterMode; label: string }[] = [
 
 const sortOptions: { value: JournalSort; label: string }[] = [
   { value: "PAPERS_DESC", label: "按论文数从高到低" },
+  { value: "PUBLISHED_RATE_DESC", label: "按全文发布率最高" },
+  { value: "CAUSAL_RATE_DESC", label: "按因果抽取率最高" },
   { value: "FAILED_DESC", label: "按失败数优先" },
   { value: "PENDING_DESC", label: "按待处理积压优先" },
-  { value: "PUBLISHED_RATE_DESC", label: "按全文发布率最高" },
   { value: "UPDATED_DESC", label: "按最近更新" },
   { value: "NAME_ASC", label: "按期刊名称 A–Z" },
 ]
@@ -74,10 +75,10 @@ export function Journals() {
     navigate("/journals" + (next.size ? "?" + next.toString() : ""), { replace: true })
   }
 
-  const publishedPct = summary && summary.totalPapers > 0
-    ? Math.round((summary.publishedPapers / summary.totalPapers) * 100) : 0
-  const matchedPct = summary && summary.totalPapers > 0
-    ? Math.round((summary.matchedPapers / summary.totalPapers) * 100) : 0
+  const publishedPct = summary ? pct(summary.publishedPapers, summary.totalPapers) : 0
+  const matchedPct = summary ? pct(summary.matchedPapers, summary.totalPapers) : 0
+  const causalCompleted = summary ? summary.causalExtractedPapers + summary.causalNoCausalPapers : 0
+  const causalPct = summary ? pct(causalCompleted, summary.totalPapers) : 0
   const yearSpan = summary?.yearMin && summary?.yearMax
     ? (summary.yearMin === summary.yearMax ? `${summary.yearMin} 年` : `${summary.yearMin}–${summary.yearMax} 年`)
     : "年份未登记"
@@ -85,7 +86,7 @@ export function Journals() {
   return <>
     <SectionHeader
       title="期刊目录"
-      description="按出版来源总览论文库收录范围、年度覆盖、全文发布完成度与 OpenAlex 书目关联状态。"
+      description="按出版来源总览论文库收录范围、年度覆盖、全文发布完成度、OpenAlex 关联与因果知识抽取进度。"
       actions={<Button asChild variant="outline"><a href="/papers">进入全部论文库<ArrowRight size={15} aria-hidden="true" /></a></Button>}
     />
 
@@ -113,6 +114,16 @@ export function Journals() {
         <strong className="journal-kpi-value">{matchedPct}%</strong>
         <div className="mini-meter" aria-hidden="true"><span className="mini-meter-fill is-blue" style={{ width: matchedPct + "%" }} /></div>
         <span className="journal-kpi-sub">{summary.matchedPapers.toLocaleString()} / {summary.totalPapers.toLocaleString()} 篇</span>
+      </div>
+      <div className="journal-kpi">
+        <span className="journal-kpi-label">因果抽取完成率</span>
+        <strong className="journal-kpi-value">{causalPct}%</strong>
+        <div className="mini-meter" aria-hidden="true"><span className="mini-meter-fill is-teal" style={{ width: causalPct + "%" }} /></div>
+        <span className="journal-kpi-sub" data-alert={summary.causalFailedPapers > 0 ? "true" : undefined}>
+          {causalCompleted.toLocaleString()} 篇完成 · {summary.causalClaims.toLocaleString()} 条主张
+          {summary.causalPendingReviewPapers > 0 ? ` · ${summary.causalPendingReviewPapers} 待审` : ""}
+          {summary.causalFailedPapers > 0 ? ` · ${summary.causalFailedPapers} 失败` : ""}
+        </span>
       </div>
     </section>}
 
@@ -162,11 +173,13 @@ export function Journals() {
           <table className="data-table journal-table">
             <thead><tr>
               <th scope="col">出版来源</th><th scope="col">年份跨度</th><th scope="col">论文数</th>
-              <th scope="col">因果抽取</th><th scope="col">全文流水线分布</th><th scope="col">OpenAlex 关联</th><th scope="col">操作</th>
+              <th scope="col">全文发布进度</th><th scope="col">OpenAlex 关联</th><th scope="col">因果抽取进度</th><th scope="col">操作</th>
             </tr></thead>
             <tbody>{items.map((journal) => {
               const pubPct = pct(journal.publishedCount, journal.totalPapers)
               const matchPct = pct(journal.matchedCount, journal.totalPapers)
+              const causalDone = journal.causalExtractedCount + journal.causalNoCausalCount
+              const causalPctVal = pct(causalDone, journal.totalPapers)
               return <tr key={journal.sourceId} className={inspecting === journal.sourceId ? "row-selected" : ""}>
                 <td className="title-cell">
                   <button type="button" className="journal-name-button" onClick={() => openInspector(journal.sourceId)}>{journal.name}</button>
@@ -174,10 +187,6 @@ export function Journals() {
                 </td>
                 <td className="year-cell">{yearLabel(journal.yearMin, journal.yearMax)}</td>
                 <td className="tabular-nums font-medium">{journal.totalPapers.toLocaleString()}</td>
-                <td className="tabular-nums font-medium">
-                  <strong>{(journal.causalExtractedCount ?? 0).toLocaleString()}</strong>
-                  <small className="block muted">已抽取论文</small>
-                </td>
                 <td className="journal-pipeline-cell">
                   <PipelineBar journal={journal} />
                   <small className="journal-bar-caption">
@@ -185,9 +194,19 @@ export function Journals() {
                     {journal.readyCount + journal.unprocessedCount > 0 && <> · {journal.readyCount + journal.unprocessedCount} 待处理</>}
                   </small>
                 </td>
-                <td className="tabular-nums">
-                  <span>{matchPct}%</span>
-                  <small className="block muted">{journal.matchedCount.toLocaleString()} / {journal.totalPapers.toLocaleString()}</small>
+                <td className="journal-openalex-cell">
+                  <div className="mini-meter" aria-hidden="true"><span className="mini-meter-fill is-blue" style={{ width: matchPct + "%" }} /></div>
+                  <small className="journal-bar-caption tabular-nums">
+                    {matchPct}% · {journal.matchedCount.toLocaleString()} / {journal.totalPapers.toLocaleString()}
+                  </small>
+                </td>
+                <td className="journal-pipeline-cell">
+                  <CausalPipelineBar journal={journal} />
+                  <small className="journal-bar-caption tabular-nums">
+                    已抽取 {causalPctVal}%（{journal.causalExtractedCount.toLocaleString()} 有因果）
+                    {journal.causalPendingReviewCount > 0 && <> · {journal.causalPendingReviewCount} 待审</>}
+                    {journal.causalFailedCount > 0 && <> · <span className="text-danger">{journal.causalFailedCount} 失败</span></>}
+                  </small>
                 </td>
                 <td><div className="row-actions">
                   <Button type="button" variant="ghost" size="sm" onClick={() => openInspector(journal.sourceId)}>详情</Button>
@@ -207,7 +226,11 @@ export function Journals() {
 function JournalCard({ journal, selected, onOpen }: { journal: JournalSummary; selected: boolean; onOpen: () => void }) {
   const pubPct = pct(journal.publishedCount, journal.totalPapers)
   const matchPct = pct(journal.matchedCount, journal.totalPapers)
+  const causalDone = journal.causalExtractedCount + journal.causalNoCausalCount
+  const causalPctVal = pct(causalDone, journal.totalPapers)
   const pending = journal.readyCount + journal.unprocessedCount
+  const causalActive = journal.causalExtractingCount + journal.causalPendingReviewCount
+
   return <article className={"panel journal-card" + (selected ? " is-selected" : "")}>
     <div className="journal-card-head">
       <div className="min-w-0">
@@ -226,26 +249,56 @@ function JournalCard({ journal, selected, onOpen }: { journal: JournalSummary; s
       </div>
     </div>
 
-    <div className="journal-card-bars">
-      <div className="journal-metric-row">
-        <span>全文发布进度</span>
-        <strong className="tabular-nums">{pubPct}%</strong>
+    <div className="journal-progress-stack">
+      <div className="journal-card-bars">
+        <div className="journal-metric-row">
+          <span>全文发布进度</span>
+          <strong className="tabular-nums">{pubPct}%</strong>
+        </div>
+        <PipelineBar journal={journal} />
+        <div className="journal-stage-tags">
+          <span className="stage-dot-label is-green">已发布 {journal.publishedCount.toLocaleString()}</span>
+          {journal.readyCount > 0 && <span className="stage-dot-label is-amber">待导入 {journal.readyCount.toLocaleString()}</span>}
+          {journal.unprocessedCount > 0 && <span className="stage-dot-label is-neutral">待解析 {journal.unprocessedCount.toLocaleString()}</span>}
+          {journal.failedCount > 0 && <span className="stage-dot-label is-red">失败 {journal.failedCount.toLocaleString()}</span>}
+          {pending === 0 && journal.failedCount === 0 && journal.publishedCount === journal.totalPapers &&
+            <span className="stage-dot-label is-green">全部就绪</span>}
+        </div>
       </div>
-      <PipelineBar journal={journal} />
-      <div className="journal-stage-tags">
-        <span className="stage-dot-label is-green">已发布 {journal.publishedCount.toLocaleString()}</span>
-        {journal.readyCount > 0 && <span className="stage-dot-label is-amber">待导入 {journal.readyCount.toLocaleString()}</span>}
-        {journal.unprocessedCount > 0 && <span className="stage-dot-label is-neutral">待解析 {journal.unprocessedCount.toLocaleString()}</span>}
-        {journal.failedCount > 0 && <span className="stage-dot-label is-red">失败 {journal.failedCount.toLocaleString()}</span>}
-        {pending === 0 && journal.failedCount === 0 && journal.publishedCount === journal.totalPapers &&
-          <span className="stage-dot-label is-green">全部就绪</span>}
+
+      <div className="journal-card-bars">
+        <div className="journal-metric-row">
+          <span>OpenAlex 关联进度</span>
+          <strong className="tabular-nums">{matchPct}% <span className="muted font-normal">({journal.matchedCount.toLocaleString()}/{journal.totalPapers.toLocaleString()})</span></strong>
+        </div>
+        <div className="pipeline-bar" role="img" aria-label={`OpenAlex 已关联 ${journal.matchedCount} / ${journal.totalPapers} 篇`}>
+          {journal.matchedCount > 0 && <span className="pipeline-seg seg-matched" style={{ width: `${(journal.matchedCount / Math.max(journal.totalPapers, 1)) * 100}%` }} />}
+        </div>
+      </div>
+
+      <div className="journal-card-bars">
+        <div className="journal-metric-row">
+          <span>因果抽取进度</span>
+          <strong className="tabular-nums">{causalPctVal}%</strong>
+        </div>
+        <CausalPipelineBar journal={journal} />
+        <div className="journal-stage-tags">
+          <span className="stage-dot-label is-teal">有因果 {journal.causalExtractedCount.toLocaleString()}</span>
+          {journal.causalNoCausalCount > 0 && <span className="stage-dot-label is-slate">无因果 {journal.causalNoCausalCount.toLocaleString()}</span>}
+          {journal.causalPendingReviewCount > 0 && <span className="stage-dot-label is-amber">待审核 {journal.causalPendingReviewCount.toLocaleString()}</span>}
+          {journal.causalExtractingCount > 0 && <span className="stage-dot-label is-blue">抽取中 {journal.causalExtractingCount.toLocaleString()}</span>}
+          {journal.causalFailedCount > 0 && <span className="stage-dot-label is-red">失败 {journal.causalFailedCount.toLocaleString()}</span>}
+          {journal.causalNotExtractedCount > 0 && <span className="stage-dot-label is-neutral">待抽取 {journal.causalNotExtractedCount.toLocaleString()}</span>}
+          {causalDone === 0 && causalActive === 0 && journal.causalFailedCount === 0 && journal.causalNotExtractedCount === 0 &&
+            <span className="stage-dot-label is-neutral">前置未完成</span>}
+        </div>
       </div>
     </div>
 
     <div className="journal-card-footer">
       <div className="journal-openalex-stat">
-        <Database size={13} aria-hidden="true" />
-        <span>OpenAlex 关联 <strong className="tabular-nums">{matchPct}%</strong></span>
+        <Sparkles size={13} aria-hidden="true" />
+        <span>因果主张 <strong className="tabular-nums">{journal.causalClaimCount.toLocaleString()}</strong> 条</span>
       </div>
       <div className="journal-card-links">
         <button type="button" className="inline-link text-sm" onClick={onOpen}>数据详情</button>
@@ -275,35 +328,61 @@ export function PipelineBar({ journal }: { journal: Pick<JournalSummary, "totalP
   </div>
 }
 
+export function CausalPipelineBar({ journal }: {
+  journal: Pick<JournalSummary, "totalPapers" | "causalExtractedCount" | "causalNoCausalCount" | "causalPendingReviewCount" | "causalExtractingCount" | "causalFailedCount" | "causalNotExtractedCount">
+}) {
+  const total = Math.max(journal.totalPapers, 1)
+  const segments = [
+    { key: "extracted", count: journal.causalExtractedCount, cls: "seg-causal-extracted", label: "已抽取（有因果）" },
+    { key: "noCausal", count: journal.causalNoCausalCount, cls: "seg-causal-none", label: "已抽取（无因果）" },
+    { key: "pendingReview", count: journal.causalPendingReviewCount, cls: "seg-ready", label: "待审核" },
+    { key: "extracting", count: journal.causalExtractingCount, cls: "seg-matched", label: "抽取中" },
+    { key: "failed", count: journal.causalFailedCount, cls: "seg-failed", label: "抽取失败" },
+    { key: "notExtracted", count: journal.causalNotExtractedCount, cls: "seg-unprocessed", label: "未抽取（可抽取）" },
+  ].filter((segment) => segment.count > 0)
+  const summary = segments.map((s) => `${s.label} ${s.count}`).join(" · ")
+  return <div className="pipeline-bar" role="img" aria-label={summary || "暂无因果抽取数据"} title={summary || "前置未完成"}>
+    {segments.map((segment) => (
+      <span key={segment.key} className={"pipeline-seg " + segment.cls}
+        style={{ width: `${(segment.count / total) * 100}%` }} />
+    ))}
+  </div>
+}
+
 function JournalDrawer({ sourceId, onClose }: { sourceId: string; onClose: () => void }) {
   const { can, canJob, canProcess } = usePermissions()
   const [processing, setProcessing] = useState(false)
   const result = useQuery<JournalDetail>("/journals/" + encodeURIComponent(sourceId))
-  const causalStats = useQuery<CausalOverviewStage2Stats>("/causal/overview-stats?sourceId=" + encodeURIComponent(sourceId))
   const detail = result.data
   const journal = detail?.journal
+  const prereqMissing = journal
+    ? Math.max(0, journal.totalPapers - journal.causalExtractedCount - journal.causalNoCausalCount
+      - journal.causalPendingReviewCount - journal.causalExtractingCount - journal.causalFailedCount
+      - journal.causalNotExtractedCount)
+    : 0
+  const causalDone = journal ? journal.causalExtractedCount + journal.causalNoCausalCount : 0
 
   return <>
     <Drawer
       title={journal?.name ?? sourceId}
-      subtitle={<span className="mono">{sourceId}{journal && <> · {yearLabel(journal.yearMin, journal.yearMax)}</>}</span>}
+      subtitle={<span className="mono">{sourceId}{journal && <> · {yearLabel(journal.yearMin, journal.yearMax)} · 共 {journal.totalPapers.toLocaleString()} 篇</>}</span>}
       width="lg"
       onClose={onClose}
       footer={journal && <div className="drawer-action-row">
-        <Button asChild><a href={"/papers" + params({ sourceId: journal.sourceId })} onClick={onClose}>
-          查看全部 {journal.totalPapers.toLocaleString()} 篇论文<ExternalLink size={14} aria-hidden="true" />
+        <Button asChild size="sm"><a href={"/papers" + params({ sourceId: journal.sourceId })} onClick={onClose}>
+          查看全部 {journal.totalPapers.toLocaleString()} 篇论文<ExternalLink size={13} aria-hidden="true" />
         </a></Button>
-        {canProcess && <Button type="button" variant="outline" onClick={() => setProcessing(true)}>
-          <Workflow size={15} aria-hidden="true" />按期刊批量处理
+        {canProcess && <Button type="button" variant="outline" size="sm" onClick={() => setProcessing(true)}>
+          <Workflow size={14} aria-hidden="true" />按期刊批量处理
         </Button>}
-        {canJob("METADATA") && <Button asChild variant="outline">
+        {canJob("METADATA") && <Button asChild variant="outline" size="sm">
           <a href={"/openalex" + params({ sourceId: journal.sourceId })} onClick={onClose}>
-            <Database size={15} aria-hidden="true" />同步 OpenAlex
+            <Database size={14} aria-hidden="true" />同步 OpenAlex
           </a>
         </Button>}
-        {can("CAUSAL_EXTRACT") && <Button asChild variant="outline">
+        {can("CAUSAL_EXTRACT") && <Button asChild variant="outline" size="sm">
           <a href={extractionEntryHref({ mode: "SOURCE_IDS", sourceId: journal.sourceId })} onClick={onClose}>
-            <Sparkles size={15} aria-hidden="true" />发起因果抽取
+            <Sparkles size={14} aria-hidden="true" />发起因果抽取
           </a>
         </Button>}
       </div>}
@@ -313,10 +392,10 @@ function JournalDrawer({ sourceId, onClose }: { sourceId: string; onClose: () =>
           <section>
             <div className="drawer-section-title">
               <h3>全文流水线分布</h3>
-              <span className="muted text-sm">阶段一 · 点击任一阶段直接筛查论文</span>
+              <span className="muted text-xs">已发布 {pct(journal.publishedCount, journal.totalPapers)}% · 点击任一阶段筛查</span>
             </div>
             <PipelineBar journal={journal} />
-            <div className="drawer-status-grid">
+            <div className="drawer-status-grid is-four">
               <a className="drawer-stat-tile" data-tone="green" href={"/papers" + params({ sourceId: journal.sourceId, status: "PUBLISHED" })} onClick={onClose}>
                 <span>已发布全文</span><strong>{journal.publishedCount.toLocaleString()}</strong>
               </a>
@@ -335,17 +414,37 @@ function JournalDrawer({ sourceId, onClose }: { sourceId: string; onClose: () =>
           <section>
             <div className="drawer-section-title">
               <h3>因果知识抽取概况</h3>
-              <span className="muted text-sm">阶段二 · LLM因果抽取状态分布</span>
+              <span className="muted text-xs">
+                完成 {pct(causalDone, journal.totalPapers)}% · 共 {journal.causalClaimCount.toLocaleString()} 条主张
+              </span>
             </div>
-            <div className="drawer-status-grid">
+            <CausalPipelineBar journal={journal} />
+            <div className="drawer-status-grid is-four">
               <a className="drawer-stat-tile" data-tone="green" href={"/papers" + params({ sourceId: journal.sourceId, causalStatus: "EXTRACTED" })} onClick={onClose}>
-                <span>成功抽取论文</span><strong>{(causalStats.data?.succeededPapers ?? journal.causalExtractedCount ?? 0).toLocaleString()}</strong>
+                <span>已抽取(有因果)</span><strong>{journal.causalExtractedCount.toLocaleString()}</strong>
               </a>
               <a className="drawer-stat-tile" data-tone="neutral" href={"/papers" + params({ sourceId: journal.sourceId, causalStatus: "NOT_EXTRACTED" })} onClick={onClose}>
-                <span>未抽取论文</span><strong>{(causalStats.data?.unextractedPapers ?? 0).toLocaleString()}</strong>
+                <span>未抽取(可抽取)</span><strong>{journal.causalNotExtractedCount.toLocaleString()}</strong>
+              </a>
+              <a className="drawer-stat-tile" data-tone="amber" href={"/papers" + params({ sourceId: journal.sourceId, causalStatus: journal.causalPendingReviewCount > 0 ? "PENDING_REVIEW" : "EXTRACTING" })} onClick={onClose}>
+                <span>{journal.causalPendingReviewCount > 0 ? "待审核" : "抽取中"}</span>
+                <strong>{(journal.causalPendingReviewCount > 0 ? journal.causalPendingReviewCount : journal.causalExtractingCount).toLocaleString()}</strong>
               </a>
               <a className="drawer-stat-tile" data-tone="red" href={"/papers" + params({ sourceId: journal.sourceId, causalStatus: "FAILED" })} onClick={onClose}>
-                <span>抽取失败论文</span><strong>{(causalStats.data?.failedPapers ?? 0).toLocaleString()}</strong>
+                <span>抽取失败</span><strong>{journal.causalFailedCount.toLocaleString()}</strong>
+              </a>
+            </div>
+            <div className="drawer-sub-links">
+              <a href={"/papers" + params({ sourceId: journal.sourceId, causalStatus: "EXTRACTED_NO_CAUSAL" })} onClick={onClose}>
+                无因果 {journal.causalNoCausalCount.toLocaleString()}
+              </a>
+              {journal.causalPendingReviewCount > 0 && journal.causalExtractingCount > 0 && (
+                <a href={"/papers" + params({ sourceId: journal.sourceId, causalStatus: "EXTRACTING" })} onClick={onClose}>
+                  抽取中 {journal.causalExtractingCount.toLocaleString()}
+                </a>
+              )}
+              <a href={"/papers" + params({ sourceId: journal.sourceId, causalStatus: "PREREQUISITE_MISSING" })} onClick={onClose}>
+                前置未完成 {prereqMissing.toLocaleString()}
               </a>
             </div>
           </section>
@@ -353,7 +452,7 @@ function JournalDrawer({ sourceId, onClose }: { sourceId: string; onClose: () =>
           <section>
             <div className="drawer-section-title">
               <h3>年度文献分布</h3>
-              <span className="muted text-sm">点击年份柱查看当年论文</span>
+              <span className="muted text-xs">悬停查看明细 · 点击年份柱筛查当年论文</span>
             </div>
             <YearHistogram sourceId={journal.sourceId} years={detail.years} onSelectYear={onClose} />
           </section>
@@ -365,6 +464,9 @@ function JournalDrawer({ sourceId, onClose }: { sourceId: string; onClose: () =>
                 <dt>OpenAlex 已关联</dt>
                 <dd className="tabular-nums">
                   {journal.matchedCount.toLocaleString()} / {journal.totalPapers.toLocaleString()} 篇（{pct(journal.matchedCount, journal.totalPapers)}%）
+                  <div className="mini-meter mt-1.5" aria-hidden="true">
+                    <span className="mini-meter-fill is-blue" style={{ width: pct(journal.matchedCount, journal.totalPapers) + "%" }} />
+                  </div>
                 </dd>
               </div>
               <div>

@@ -11,7 +11,7 @@ export interface Page<T> {
 }
 
 export type JournalFilterMode = "ALL" | "HAS_FAILED" | "HAS_PENDING" | "ALL_PUBLISHED"
-export type JournalSort = "PAPERS_DESC" | "PUBLISHED_RATE_DESC" | "FAILED_DESC" | "PENDING_DESC" | "UPDATED_DESC" | "NAME_ASC"
+export type JournalSort = "PAPERS_DESC" | "PUBLISHED_RATE_DESC" | "CAUSAL_RATE_DESC" | "FAILED_DESC" | "PENDING_DESC" | "UPDATED_DESC" | "NAME_ASC"
 
 export interface CorpusJournalOverview {
   totalJournals: number
@@ -19,6 +19,13 @@ export interface CorpusJournalOverview {
   publishedPapers: number
   matchedPapers: number
   failedPapers: number
+  causalExtractedPapers: number
+  causalNoCausalPapers: number
+  causalPendingReviewPapers: number
+  causalExtractingPapers: number
+  causalFailedPapers: number
+  causalNotExtractedPapers: number
+  causalClaims: number
   yearMin: number | null
   yearMax: number | null
 }
@@ -34,7 +41,13 @@ export interface JournalSummary {
   failedCount: number
   unsupportedCount: number
   matchedCount: number
-  causalExtractedCount?: number
+  causalExtractedCount: number
+  causalNoCausalCount: number
+  causalPendingReviewCount: number
+  causalExtractingCount: number
+  causalFailedCount: number
+  causalNotExtractedCount: number
+  causalClaimCount: number
   yearMin: number | null
   yearMax: number | null
   latestUpdatedAt: string | null
@@ -83,6 +96,8 @@ export interface Paper {
   latestParseId: string | null
   publishedParseId: string | null
   status: PaperStatus
+  causalStatus?: "EXTRACTING" | "PENDING_REVIEW" | "EXTRACTED" | "EXTRACTED_NO_CAUSAL" | "FAILED" | "PREREQUISITE_MISSING" | "NOT_EXTRACTED"
+  causalClaimCount?: number
   updatedAt: string | null
 }
 

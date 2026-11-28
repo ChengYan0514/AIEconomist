@@ -14,7 +14,17 @@ public record JournalSummary(
         long unsupportedCount,
         long matchedCount,
         long causalExtractedCount,
+        long causalNoCausalCount,
+        long causalPendingReviewCount,
+        long causalExtractingCount,
+        long causalFailedCount,
+        long causalNotExtractedCount,
+        long causalClaimCount,
         Integer yearMin,
         Integer yearMax,
         OffsetDateTime latestUpdatedAt
-) {}
+) {
+    public long causalCompletedCount() {
+        return causalExtractedCount + causalNoCausalCount;
+    }
+}

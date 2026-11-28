@@ -102,6 +102,7 @@ public class PaperCsvController {
         if (filter.yearFrom() != null) result.put("yearFrom", filter.yearFrom());
         if (filter.yearTo() != null) result.put("yearTo", filter.yearTo());
         if (filter.status() != null) result.put("status", filter.status().name());
+        if (filter.causalStatus() != null) result.put("causalStatus", filter.causalStatus().name());
         return result;
     }
 

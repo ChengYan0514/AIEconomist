@@ -319,6 +319,7 @@ paths:
         - {name: yearFrom, in: query, schema: {type: integer, minimum: 1000, maximum: 9999}}
         - {name: yearTo, in: query, schema: {type: integer, minimum: 1000, maximum: 9999}}
         - {name: status, in: query, schema: {$ref: '#/components/schemas/PaperStatus'}}
+        - {name: causalStatus, in: query, schema: {$ref: '#/components/schemas/CausalStatus'}}
         - {name: archived, in: query, schema: {type: boolean, default: false}}
         - {$ref: '#/components/parameters/Page'}
         - {$ref: '#/components/parameters/Size'}
@@ -359,6 +360,7 @@ paths:
       - {name: yearFrom, in: query, schema: {type: integer, minimum: 1000, maximum: 9999}}
       - {name: yearTo, in: query, schema: {type: integer, minimum: 1000, maximum: 9999}}
       - {name: status, in: query, schema: {$ref: '#/components/schemas/PaperStatus'}}
+      - {name: causalStatus, in: query, schema: {$ref: '#/components/schemas/CausalStatus'}}
       - {name: archived, in: query, schema: {type: boolean, default: false}}
     get:
       operationId: exportPapers
@@ -1307,21 +1309,62 @@ components:
       enum: [ALL, HAS_FAILED, HAS_PENDING, ALL_PUBLISHED]
     JournalSort:
       type: string
-      enum: [PAPERS_DESC, PUBLISHED_RATE_DESC, FAILED_DESC, PENDING_DESC, UPDATED_DESC, NAME_ASC]
+      enum: [PAPERS_DESC, PUBLISHED_RATE_DESC, CAUSAL_RATE_DESC, FAILED_DESC, PENDING_DESC, UPDATED_DESC, NAME_ASC]
     CorpusJournalOverview:
       type: object
-      required: [totalJournals, totalPapers, publishedPapers, matchedPapers, failedPapers, yearMin, yearMax]
+      required:
+        - totalJournals
+        - totalPapers
+        - publishedPapers
+        - matchedPapers
+        - failedPapers
+        - causalExtractedPapers
+        - causalNoCausalPapers
+        - causalPendingReviewPapers
+        - causalExtractingPapers
+        - causalFailedPapers
+        - causalNotExtractedPapers
+        - causalClaims
+        - yearMin
+        - yearMax
       properties:
         totalJournals: {type: integer, format: int64}
         totalPapers: {type: integer, format: int64}
         publishedPapers: {type: integer, format: int64}
         matchedPapers: {type: integer, format: int64}
         failedPapers: {type: integer, format: int64}
+        causalExtractedPapers: {type: integer, format: int64}
+        causalNoCausalPapers: {type: integer, format: int64}
+        causalPendingReviewPapers: {type: integer, format: int64}
+        causalExtractingPapers: {type: integer, format: int64}
+        causalFailedPapers: {type: integer, format: int64}
+        causalNotExtractedPapers: {type: integer, format: int64}
+        causalClaims: {type: integer, format: int64}
         yearMin: {type: [integer, 'null']}
         yearMax: {type: [integer, 'null']}
     JournalSummary:
       type: object
-      required: [sourceId, name, totalPapers, archivedPapers, publishedCount, readyCount, unprocessedCount, failedCount, unsupportedCount, matchedCount, yearMin, yearMax, latestUpdatedAt]
+      required:
+        - sourceId
+        - name
+        - totalPapers
+        - archivedPapers
+        - publishedCount
+        - readyCount
+        - unprocessedCount
+        - failedCount
+        - unsupportedCount
+        - matchedCount
+        - causalExtractedCount
+        - causalNoCausalCount
+        - causalPendingReviewCount
+        - causalExtractingCount
+        - causalFailedCount
+        - causalNotExtractedCount
+        - causalClaimCount
+        - yearMin
+        - yearMax
+        - latestUpdatedAt
       properties:
         sourceId: {type: string}
         name: {type: string}
@@ -1333,6 +1376,13 @@ components:
         failedCount: {type: integer, format: int64}
         unsupportedCount: {type: integer, format: int64}
         matchedCount: {type: integer, format: int64}
+        causalExtractedCount: {type: integer, format: int64}
+        causalNoCausalCount: {type: integer, format: int64}
+        causalPendingReviewCount: {type: integer, format: int64}
+        causalExtractingCount: {type: integer, format: int64}
+        causalFailedCount: {type: integer, format: int64}
+        causalNotExtractedCount: {type: integer, format: int64}
+        causalClaimCount: {type: integer, format: int64}
         yearMin: {type: [integer, 'null']}
         yearMax: {type: [integer, 'null']}
         latestUpdatedAt: {type: [string, 'null'], format: date-time}
@@ -1370,6 +1420,9 @@ components:
     PaperStatus:
       type: string
       enum: [UNPROCESSED, READY, PUBLISHED, FAILED, UNSUPPORTED]
+    CausalStatus:
+      type: string
+      enum: [EXTRACTING, PENDING_REVIEW, EXTRACTED, EXTRACTED_NO_CAUSAL, FAILED, PREREQUISITE_MISSING, NOT_EXTRACTED]
     Paper:
       type: object
       required: [paperId, sourceId, sourceName, year, title, authors, doi, url, provider, originalName, originalType, originalSize, version, revision, status, archived, legacy, hasOriginal, matchedWorkId, latestParseId, publishedParseId, updatedAt]
@@ -1395,6 +1448,8 @@ components:
         latestParseId: {type: [string, 'null'], format: uuid}
         publishedParseId: {type: [string, 'null'], format: uuid}
         status: {$ref: '#/components/schemas/PaperStatus'}
+        causalStatus: {$ref: '#/components/schemas/CausalStatus'}
+        causalClaimCount: {type: integer, minimum: 0}
         updatedAt: {type: [string, 'null'], format: date-time}
     Block:
       type: object

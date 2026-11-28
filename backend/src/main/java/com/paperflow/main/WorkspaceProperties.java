@@ -9,7 +9,7 @@ import java.time.Duration;
 @ConfigurationProperties("paperflow")
 public record WorkspaceProperties(
         Path storage, Path legacyStorage, String openalexSchema, URI mineruUrl,
-        String mineruTier, Duration mineruTimeout,
+        String mineruTier, Duration mineruTimeout, Duration journalCacheTtl,
         String adminUsername, String adminPassword
 ) {
     public WorkspaceProperties {
@@ -18,6 +18,11 @@ public record WorkspaceProperties(
         }
         if (mineruTimeout.isNegative() || mineruTimeout.isZero()) {
             throw new IllegalArgumentException("PAPERFLOW_MINERU_TIMEOUT 必须大于零");
+        }
+        if (journalCacheTtl == null) {
+            journalCacheTtl = Duration.ofSeconds(15);
+        } else if (journalCacheTtl.isNegative()) {
+            throw new IllegalArgumentException("PAPERFLOW_JOURNAL_CACHE_TTL 不能为负数");
         }
         if (mineruUrl.getHost() == null || !java.util.List.of("http", "https").contains(mineruUrl.getScheme())
                 || mineruUrl.getUserInfo() != null || mineruUrl.getQuery() != null || mineruUrl.getFragment() != null) {

@@ -1,7 +1,5 @@
 package com.paperflow.adapters.persistence;
 
-import com.paperflow.paper.journal.CorpusJournalOverview;
-import com.paperflow.paper.journal.JournalFilter;
 import com.paperflow.paper.journal.JournalStore;
 import com.paperflow.paper.journal.JournalSummary;
 import com.paperflow.paper.journal.JournalYearStats;
@@ -10,18 +8,21 @@ import org.apache.ibatis.annotations.Param;
 import java.util.List;
 
 public interface JournalMapper extends JournalStore {
-    @Override
-    CorpusJournalOverview overview(@Param("schema") String schema);
+    List<JournalSummary> listAllWithClaims(@Param("schema") String schema,
+                                           @Param("claims") CausalClaimSnapshot claims);
+
+    JournalSummary getWithClaims(@Param("schema") String schema, @Param("sourceId") String sourceId,
+                                 @Param("claims") CausalClaimSnapshot claims);
 
     @Override
-    List<JournalSummary> list(@Param("schema") String schema, @Param("filter") JournalFilter filter,
-                              @Param("offset") long offset, @Param("size") int size);
+    default List<JournalSummary> listAll(String schema) {
+        return listAllWithClaims(schema, null);
+    }
 
     @Override
-    long count(@Param("schema") String schema, @Param("filter") JournalFilter filter);
-
-    @Override
-    JournalSummary get(@Param("schema") String schema, @Param("sourceId") String sourceId);
+    default JournalSummary get(String schema, String sourceId) {
+        return getWithClaims(schema, sourceId, null);
+    }
 
     @Override
     long importedWorksCount(@Param("sourceId") String sourceId);

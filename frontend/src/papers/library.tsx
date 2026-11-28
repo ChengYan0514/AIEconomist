@@ -1,7 +1,7 @@
 import { Archive, BookOpen, BookOpenCheck, Database, ExternalLink, Eye, Play, Plus, ScanText, Search, Sparkles, Upload, Workflow, X } from "lucide-react"
 import { useEffect, useState, type FormEvent } from "react"
 import { api, dateLabel, errorMessage, jobPath, paperPath, params, useQuery } from "../api"
-import { extractionBatchPath, extractionEntryHref, type PaperCausalStatusInfo, type PaperCausalStatusType } from "../causal/types"
+import { extractionEntryHref, type PaperCausalStatusType } from "../causal/types"
 import { Drawer } from "../components/drawer"
 import { Chip, Empty, Loading, Notice, Pagination, SourceField, paperLabels } from "../components/shared"
 import { Button } from "../components/ui/button"
@@ -58,29 +58,32 @@ export function Library() {
   const [dialog, setDialog] = useState<"upload" | "archive" | "process" | null>(null)
   const [previewPaper, setPreviewPaper] = useState<Paper | null>(null)
 
-  const [causalStatusMap, setCausalStatusMap] = useState<Record<string, PaperCausalStatusInfo>>({})
+  const [optimisticCausalStatus, setOptimisticCausalStatus] = useState<Record<string, PaperCausalStatusType>>({})
   const [causalLaunchNotice, setCausalLaunchNotice] = useState<string>("")
   const [extractingDirectly, setExtractingDirectly] = useState(false)
+
+  useEffect(() => {
+    const parsed = parseUrl(loc.search)
+    setFilter(parsed.filter)
+    setDraft(parsed.filter)
+    setArchived(parsed.archived)
+    setPage(0)
+    setSelected(new Set())
+  }, [loc.search])
 
   const query = params({ ...filter, archived })
   const result = useQuery<Page<Paper>>("/papers" + params({ ...filter, archived, page, size }))
   const rows = result.data?.items ?? []
 
   useEffect(() => {
-    if (!rows.length) return
-    let active = true
-    rows.forEach(async (p) => {
-      try {
-        const info = await api<PaperCausalStatusInfo>("/causal/papers/status/" + encodeURIComponent(p.paperId))
-        if (active) {
-          setCausalStatusMap((prev) => ({ ...prev, [p.paperId]: info }))
-        }
-      } catch (e) {
-        // ignore
-      }
-    })
-    return () => { active = false }
-  }, [rows])
+    setOptimisticCausalStatus({})
+  }, [result.data])
+
+  function resolveCausalStatus(paper: Paper): PaperCausalStatusType {
+    return optimisticCausalStatus[paper.paperId]
+      ?? paper.causalStatus
+      ?? (paper.status === "PUBLISHED" && paper.matchedWorkId ? "NOT_EXTRACTED" : "PREREQUISITE_MISSING")
+  }
 
   async function launchDirectCausalExtraction() {
     if (selected.size === 0) return
@@ -92,9 +95,9 @@ export function Library() {
 
     for (const id of selectedIds) {
       const paper = rows.find((r) => r.paperId === id)
-      const st = causalStatusMap[id]?.status
+      const st = paper ? resolveCausalStatus(paper) : undefined
       const eligible = paper && !paper.archived && paper.status === "PUBLISHED" && Boolean(paper.matchedWorkId)
-      if (eligible && (st === "NOT_EXTRACTED" || st === "FAILED" || !st)) {
+      if (eligible && (st === "NOT_EXTRACTED" || st === "FAILED")) {
         executable.push(id)
       } else {
         skippedCount++
@@ -108,7 +111,7 @@ export function Library() {
     }
 
     try {
-      const created = await api<{ batchId: string }>("/causal/extractions", {
+      await api<{ batchId: string }>("/causal/extractions", {
         method: "POST",
         body: JSON.stringify({
           target: { mode: "PAPER_IDS", paperIds: executable },
@@ -121,12 +124,10 @@ export function Library() {
         : `正在对 ${executable.length} 篇论文发起因果抽取。`
       setCausalLaunchNotice(notice)
       setSelected(new Set())
-      executable.forEach((id) => {
-        setCausalStatusMap((prev) => {
-          const cur = prev[id]
-          if (!cur) return prev
-          return { ...prev, [id]: { ...cur, status: "EXTRACTING" } }
-        })
+      setOptimisticCausalStatus((prev) => {
+        const next = { ...prev }
+        executable.forEach((id) => { next[id] = "EXTRACTING" })
+        return next
       })
     } catch (err: any) {
       setCausalLaunchNotice("发起因果抽取失败：" + (err?.message || "网络或服务端错误"))
@@ -147,7 +148,7 @@ export function Library() {
     })
     const target = "/papers" + search
     if (target !== window.location.pathname + window.location.search) {
-      window.history.replaceState(window.history.state, "", target)
+      navigate(target, { replace: true })
     }
   }
 
@@ -270,11 +271,11 @@ export function Library() {
               <thead><tr>{canSelect && <th className="check-cell"><input type="checkbox" checked={allChecked} onChange={togglePage} aria-label="选择本页全部论文" /></th>}
                 <th scope="col">论文</th><th scope="col">出版来源</th><th scope="col">年份</th><th scope="col">全文状态</th><th scope="col">因果抽取状态</th><th scope="col">OpenAlex</th><th scope="col" className="preview-col"><span className="sr-only">快览</span></th></tr></thead>
               <tbody>{rows.map((paper) => {
-                const cInfo = causalStatusMap[paper.paperId]
-                const cStatus = cInfo?.status ?? (paper.status === "PUBLISHED" && paper.matchedWorkId ? "NOT_EXTRACTED" : "PREREQUISITE_MISSING")
+                const cStatus = resolveCausalStatus(paper)
                 const [cLabel, cTone] = CAUSAL_STATUS_LABELS[cStatus] ?? [cStatus, "neutral"]
-                const displayLabel = cStatus === "EXTRACTED" && cInfo && cInfo.claimCount > 0
-                  ? `已抽取（${cInfo.claimCount}条）`
+                const claimCount = paper.causalClaimCount ?? 0
+                const displayLabel = cStatus === "EXTRACTED" && claimCount > 0
+                  ? `已抽取（${claimCount}条）`
                   : cLabel
 
                 return <tr key={paper.paperId} className={selected.has(paper.paperId) ? "row-selected" : ""}>

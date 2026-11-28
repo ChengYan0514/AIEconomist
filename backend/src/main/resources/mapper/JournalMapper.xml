@@ -1,103 +1,213 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
 <mapper namespace="com.paperflow.adapters.persistence.JournalMapper">
-    <sql id="aggregated">
-        SELECT p.source_id,
-               COALESCE(MAX(NULLIF(btrim(os.display_name), '')), p.source_id) AS name,
-               count(*) FILTER (WHERE NOT p.archived) AS total_papers,
-               count(*) FILTER (WHERE p.archived) AS archived_papers,
-               count(*) FILTER (WHERE NOT p.archived AND p.status = 'PUBLISHED') AS published_count,
-               count(*) FILTER (WHERE NOT p.archived AND p.status = 'READY') AS ready_count,
-               count(*) FILTER (WHERE NOT p.archived AND p.status = 'UNPROCESSED') AS unprocessed_count,
-               count(*) FILTER (WHERE NOT p.archived AND p.status = 'FAILED') AS failed_count,
-               count(*) FILTER (WHERE NOT p.archived AND p.status = 'UNSUPPORTED') AS unsupported_count,
-               count(*) FILTER (WHERE NOT p.archived AND p.matched_work_id IS NOT NULL) AS matched_count,
-               count(*) FILTER (WHERE NOT p.archived AND p.matched_work_id IS NOT NULL AND EXISTS (SELECT 1 FROM paper_claim_table pct WHERE pct.paper_id = p.matched_work_id)) AS causal_extracted_count,
-               MIN(p.year) FILTER (WHERE NOT p.archived) AS year_min,
-               MAX(p.year) FILTER (WHERE NOT p.archived) AS year_max,
-               MAX(p.updated_at) FILTER (WHERE NOT p.archived) AS latest_updated_at
-        FROM v2_paper_read p
-        LEFT JOIN ${schema}.sources os ON os.id = p.source_id
-        WHERE p.source_id IS NOT NULL AND btrim(p.source_id) &lt;&gt; ''
-        GROUP BY p.source_id
-        HAVING count(*) FILTER (WHERE NOT p.archived) &gt; 0
+    <sql id="paperStatusExpr">
+        CASE
+            WHEN v.published_parse_id IS NOT NULL OR (v.file_revision = 0 AND v.legacy_status = 'PUBLISHED') THEN 'PUBLISHED'
+            WHEN v.latest_parse_id IS NOT NULL OR (v.file_revision = 0 AND v.legacy_status = 'READY') THEN 'READY'
+            WHEN fj.paper_id IS NOT NULL OR (v.file_revision = 0 AND v.legacy_status = 'FAILED') THEN 'FAILED'
+            WHEN (v.file_revision = 0 AND v.legacy_status = 'UNSUPPORTED') OR v.original_type &lt;&gt; 'PDF' THEN 'UNSUPPORTED'
+            ELSE 'UNPROCESSED'
+        END
     </sql>
 
-    <sql id="filterWhere">
-        WHERE 1 = 1
-        <if test="filter.q != null">
-            AND (strpos(lower(name), lower(#{filter.q})) &gt; 0
-              OR strpos(lower(source_id), lower(#{filter.q})) &gt; 0)
-        </if>
-        <if test="filter.mode.name() == 'HAS_FAILED'">AND failed_count &gt; 0</if>
-        <if test="filter.mode.name() == 'HAS_PENDING'">AND (unprocessed_count &gt; 0 OR ready_count &gt; 0)</if>
-        <if test="filter.mode.name() == 'ALL_PUBLISHED'">AND total_papers &gt; 0 AND published_count = total_papers</if>
+    <sql id="journalAggCols">
+        p.source_id,
+        count(*) FILTER (WHERE NOT p.archived) AS total_papers,
+        count(*) FILTER (WHERE p.archived) AS archived_papers,
+        count(*) FILTER (WHERE NOT p.archived AND p.status = 'PUBLISHED') AS published_count,
+        count(*) FILTER (WHERE NOT p.archived AND p.status = 'READY') AS ready_count,
+        count(*) FILTER (WHERE NOT p.archived AND p.status = 'UNPROCESSED') AS unprocessed_count,
+        count(*) FILTER (WHERE NOT p.archived AND p.status = 'FAILED') AS failed_count,
+        count(*) FILTER (WHERE NOT p.archived AND p.status = 'UNSUPPORTED') AS unsupported_count,
+        count(*) FILTER (WHERE NOT p.archived AND p.matched_work_id IS NOT NULL) AS matched_count,
+        count(*) FILTER (
+            WHERE NOT p.archived
+              AND p.claim_count &gt; 0
+              AND COALESCE(p.run_status, '') NOT IN ('QUEUED', 'RUNNING', 'PUBLISHING', 'PENDING_REVIEW')
+        ) AS causal_extracted_count,
+        count(*) FILTER (
+            WHERE NOT p.archived
+              AND p.claim_count = 0
+              AND p.run_status = 'SUCCEEDED'
+        ) AS causal_no_causal_count,
+        count(*) FILTER (
+            WHERE NOT p.archived
+              AND p.run_status = 'PENDING_REVIEW'
+        ) AS causal_pending_review_count,
+        count(*) FILTER (
+            WHERE NOT p.archived
+              AND p.run_status IN ('QUEUED', 'RUNNING', 'PUBLISHING')
+        ) AS causal_extracting_count,
+        count(*) FILTER (
+            WHERE NOT p.archived
+              AND p.claim_count = 0
+              AND p.run_status = 'FAILED'
+        ) AS causal_failed_count,
+        count(*) FILTER (
+            WHERE NOT p.archived
+              AND p.status = 'PUBLISHED'
+              AND p.matched_work_id IS NOT NULL
+              AND btrim(p.matched_work_id) &lt;&gt; ''
+              AND p.claim_count = 0
+              AND COALESCE(p.run_status, '') NOT IN ('QUEUED', 'RUNNING', 'PUBLISHING', 'PENDING_REVIEW', 'FAILED', 'SUCCEEDED')
+        ) AS causal_not_extracted_count,
+        COALESCE(SUM(p.claim_count) FILTER (WHERE NOT p.archived), 0)::bigint AS causal_claim_count,
+        MIN(p.year) FILTER (WHERE NOT p.archived) AS year_min,
+        MAX(p.year) FILTER (WHERE NOT p.archived) AS year_max,
+        MAX(p.updated_at) FILTER (WHERE NOT p.archived) AS latest_updated_at
     </sql>
 
-    <select id="overview" resultType="com.paperflow.paper.journal.CorpusJournalOverview">
-        SELECT count(DISTINCT source_id) AS total_journals,
-               count(*) AS total_papers,
-               count(*) FILTER (WHERE status = 'PUBLISHED') AS published_papers,
-               count(*) FILTER (WHERE matched_work_id IS NOT NULL) AS matched_papers,
-               count(*) FILTER (WHERE status = 'FAILED') AS failed_papers,
-               MIN(year) AS year_min,
-               MAX(year) AS year_max
-        FROM v2_paper_read
-        WHERE NOT archived AND source_id IS NOT NULL AND btrim(source_id) &lt;&gt; ''
+    <select id="listAllWithClaims" resultType="com.paperflow.paper.journal.JournalSummary">
+        WITH failed_jobs AS (
+            SELECT DISTINCT paper_id, file_revision
+            FROM v2_job_item
+            WHERE state = 'FAILED' AND kind IN ('PARSE', 'PUBLISH')
+        ),
+        claimed_works AS (
+            <choose>
+                <when test="claims == null">
+                    SELECT paper_id AS work_id, count(*)::bigint AS claim_count
+                    FROM paper_claim_table
+                    GROUP BY paper_id
+                </when>
+                <otherwise>
+                    SELECT work_id, claim_count
+                    FROM unnest(
+                        #{claims.workIds, typeHandler=com.paperflow.adapters.persistence.PgVarcharArrayTypeHandler},
+                        #{claims.counts, typeHandler=com.paperflow.adapters.persistence.PgBigintArrayTypeHandler}
+                    ) AS cw(work_id, claim_count)
+                </otherwise>
+            </choose>
+        ),
+        latest_runs AS (
+            SELECT DISTINCT ON (paper_id) paper_id, status
+            FROM v2_causal_run
+            ORDER BY paper_id, updated_at DESC
+        ),
+        papers AS (
+            SELECT v.source_id,
+                   v.publication_year AS year,
+                   (v.archived_at IS NOT NULL) AS archived,
+                   v.matched_work_id,
+                   v.updated_at,
+                   <include refid="paperStatusExpr"/> AS status,
+                   COALESCE(cw.claim_count, 0) AS claim_count,
+                   lr.status AS run_status
+            FROM v2_paper v
+            LEFT JOIN failed_jobs fj ON fj.paper_id = v.paper_id AND fj.file_revision = v.file_revision
+            LEFT JOIN claimed_works cw ON v.matched_work_id IS NOT NULL AND cw.work_id = v.matched_work_id
+            LEFT JOIN latest_runs lr ON lr.paper_id = v.paper_id
+            WHERE v.source_id IS NOT NULL AND btrim(v.source_id) &lt;&gt; ''
+        ),
+        grouped AS (
+            SELECT <include refid="journalAggCols"/>
+            FROM papers p
+            GROUP BY p.source_id
+            HAVING count(*) FILTER (WHERE NOT p.archived) &gt; 0
+        )
+        SELECT g.source_id,
+               COALESCE(NULLIF(btrim(os.display_name), ''), g.source_id) AS name,
+               g.total_papers,
+               g.archived_papers,
+               g.published_count,
+               g.ready_count,
+               g.unprocessed_count,
+               g.failed_count,
+               g.unsupported_count,
+               g.matched_count,
+               g.causal_extracted_count,
+               g.causal_no_causal_count,
+               g.causal_pending_review_count,
+               g.causal_extracting_count,
+               g.causal_failed_count,
+               g.causal_not_extracted_count,
+               g.causal_claim_count,
+               g.year_min,
+               g.year_max,
+               g.latest_updated_at
+        FROM grouped g
+        LEFT JOIN ${schema}.sources os ON os.id = g.source_id
     </select>
 
-    <select id="list" resultType="com.paperflow.paper.journal.JournalSummary">
-        WITH aggregated AS (<include refid="aggregated"/>)
-        SELECT * FROM aggregated
-        <include refid="filterWhere"/>
-        <choose>
-            <when test="filter.sort.name() == 'PUBLISHED_RATE_DESC'">
-                ORDER BY (published_count::double precision / GREATEST(total_papers, 1)) DESC, total_papers DESC, source_id ASC
-            </when>
-            <when test="filter.sort.name() == 'FAILED_DESC'">
-                ORDER BY failed_count DESC, total_papers DESC, source_id ASC
-            </when>
-            <when test="filter.sort.name() == 'PENDING_DESC'">
-                ORDER BY (unprocessed_count + ready_count) DESC, total_papers DESC, source_id ASC
-            </when>
-            <when test="filter.sort.name() == 'UPDATED_DESC'">
-                ORDER BY latest_updated_at DESC NULLS LAST, total_papers DESC, source_id ASC
-            </when>
-            <when test="filter.sort.name() == 'NAME_ASC'">
-                ORDER BY lower(name) ASC, source_id ASC
-            </when>
-            <otherwise>
-                ORDER BY total_papers DESC, published_count DESC, source_id ASC
-            </otherwise>
-        </choose>
-        OFFSET #{offset} LIMIT #{size}
-    </select>
-
-    <select id="count" resultType="long">
-        WITH aggregated AS (<include refid="aggregated"/>)
-        SELECT count(*) FROM aggregated
-        <include refid="filterWhere"/>
-    </select>
-
-    <select id="get" resultType="com.paperflow.paper.journal.JournalSummary">
-        SELECT p.source_id,
-               COALESCE(MAX(NULLIF(btrim(os.display_name), '')), p.source_id) AS name,
-               count(*) FILTER (WHERE NOT p.archived) AS total_papers,
-               count(*) FILTER (WHERE p.archived) AS archived_papers,
-               count(*) FILTER (WHERE NOT p.archived AND p.status = 'PUBLISHED') AS published_count,
-               count(*) FILTER (WHERE NOT p.archived AND p.status = 'READY') AS ready_count,
-               count(*) FILTER (WHERE NOT p.archived AND p.status = 'UNPROCESSED') AS unprocessed_count,
-               count(*) FILTER (WHERE NOT p.archived AND p.status = 'FAILED') AS failed_count,
-               count(*) FILTER (WHERE NOT p.archived AND p.status = 'UNSUPPORTED') AS unsupported_count,
-               count(*) FILTER (WHERE NOT p.archived AND p.matched_work_id IS NOT NULL) AS matched_count,
-               count(*) FILTER (WHERE NOT p.archived AND p.matched_work_id IS NOT NULL AND EXISTS (SELECT 1 FROM paper_claim_table pct WHERE pct.paper_id = p.matched_work_id)) AS causal_extracted_count,
-               MIN(p.year) FILTER (WHERE NOT p.archived) AS year_min,
-               MAX(p.year) FILTER (WHERE NOT p.archived) AS year_max,
-               MAX(p.updated_at) FILTER (WHERE NOT p.archived) AS latest_updated_at
-        FROM v2_paper_read p
-        LEFT JOIN ${schema}.sources os ON os.id = p.source_id
-        WHERE p.source_id = #{sourceId}
-        GROUP BY p.source_id
+    <select id="getWithClaims" resultType="com.paperflow.paper.journal.JournalSummary">
+        WITH target_papers AS (
+            SELECT v.paper_id, v.source_id, v.publication_year, v.archived_at, v.matched_work_id,
+                   v.published_parse_id, v.latest_parse_id, v.file_revision, v.legacy_status,
+                   v.original_type, v.updated_at
+            FROM v2_paper v
+            WHERE v.source_id = #{sourceId}
+        ),
+        failed_jobs AS (
+            SELECT DISTINCT j.paper_id, j.file_revision
+            FROM v2_job_item j
+            JOIN target_papers tp ON tp.paper_id = j.paper_id AND tp.file_revision = j.file_revision
+            WHERE j.state = 'FAILED' AND j.kind IN ('PARSE', 'PUBLISH')
+        ),
+        claimed_works AS (
+            <choose>
+                <when test="claims == null">
+                    SELECT pct.paper_id AS work_id, count(*)::bigint AS claim_count
+                    FROM paper_claim_table pct
+                    WHERE pct.paper_id IN (SELECT tp.matched_work_id FROM target_papers tp WHERE tp.matched_work_id IS NOT NULL)
+                    GROUP BY pct.paper_id
+                </when>
+                <otherwise>
+                    SELECT work_id, claim_count
+                    FROM unnest(
+                        #{claims.workIds, typeHandler=com.paperflow.adapters.persistence.PgVarcharArrayTypeHandler},
+                        #{claims.counts, typeHandler=com.paperflow.adapters.persistence.PgBigintArrayTypeHandler}
+                    ) AS cw(work_id, claim_count)
+                </otherwise>
+            </choose>
+        ),
+        latest_runs AS (
+            SELECT DISTINCT ON (r.paper_id) r.paper_id, r.status
+            FROM v2_causal_run r
+            WHERE r.paper_id IN (SELECT tp.paper_id FROM target_papers tp)
+            ORDER BY r.paper_id, r.updated_at DESC
+        ),
+        papers AS (
+            SELECT v.source_id,
+                   v.publication_year AS year,
+                   (v.archived_at IS NOT NULL) AS archived,
+                   v.matched_work_id,
+                   v.updated_at,
+                   <include refid="paperStatusExpr"/> AS status,
+                   COALESCE(cw.claim_count, 0) AS claim_count,
+                   lr.status AS run_status
+            FROM target_papers v
+            LEFT JOIN failed_jobs fj ON fj.paper_id = v.paper_id AND fj.file_revision = v.file_revision
+            LEFT JOIN claimed_works cw ON v.matched_work_id IS NOT NULL AND cw.work_id = v.matched_work_id
+            LEFT JOIN latest_runs lr ON lr.paper_id = v.paper_id
+        ),
+        grouped AS (
+            SELECT <include refid="journalAggCols"/>
+            FROM papers p
+            GROUP BY p.source_id
+        )
+        SELECT g.source_id,
+               COALESCE(NULLIF(btrim(os.display_name), ''), g.source_id) AS name,
+               g.total_papers,
+               g.archived_papers,
+               g.published_count,
+               g.ready_count,
+               g.unprocessed_count,
+               g.failed_count,
+               g.unsupported_count,
+               g.matched_count,
+               g.causal_extracted_count,
+               g.causal_no_causal_count,
+               g.causal_pending_review_count,
+               g.causal_extracting_count,
+               g.causal_failed_count,
+               g.causal_not_extracted_count,
+               g.causal_claim_count,
+               g.year_min,
+               g.year_max,
+               g.latest_updated_at
+        FROM grouped g
+        LEFT JOIN ${schema}.sources os ON os.id = g.source_id
     </select>
 
     <select id="importedWorksCount" resultType="long">
@@ -105,6 +215,26 @@
     </select>
 
     <select id="years" resultType="com.paperflow.paper.journal.JournalYearStats">
+        WITH target_papers AS (
+            SELECT v.paper_id, v.publication_year, v.matched_work_id,
+                   v.published_parse_id, v.latest_parse_id, v.file_revision,
+                   v.legacy_status, v.original_type
+            FROM v2_paper v
+            WHERE v.archived_at IS NULL AND v.source_id = #{sourceId} AND v.publication_year IS NOT NULL
+        ),
+        failed_jobs AS (
+            SELECT DISTINCT j.paper_id, j.file_revision
+            FROM v2_job_item j
+            JOIN target_papers tp ON tp.paper_id = j.paper_id AND tp.file_revision = j.file_revision
+            WHERE j.state = 'FAILED' AND j.kind IN ('PARSE', 'PUBLISH')
+        ),
+        papers AS (
+            SELECT v.publication_year AS year,
+                   v.matched_work_id,
+                   <include refid="paperStatusExpr"/> AS status
+            FROM target_papers v
+            LEFT JOIN failed_jobs fj ON fj.paper_id = v.paper_id AND fj.file_revision = v.file_revision
+        )
         SELECT year,
                count(*) AS total,
                count(*) FILTER (WHERE status = 'PUBLISHED') AS published,
@@ -113,8 +243,7 @@
                count(*) FILTER (WHERE status = 'FAILED') AS failed,
                count(*) FILTER (WHERE status = 'UNSUPPORTED') AS unsupported,
                count(*) FILTER (WHERE matched_work_id IS NOT NULL) AS matched
-        FROM v2_paper_read
-        WHERE NOT archived AND source_id = #{sourceId} AND year IS NOT NULL
+        FROM papers
         GROUP BY year
         ORDER BY year ASC
     </select>

@@ -28,22 +28,31 @@ public class JournalController {
                                 CorpusOverviewView summary) {}
 
     record CorpusOverviewView(long totalJournals, long totalPapers, long publishedPapers, long matchedPapers,
-                              long failedPapers, Integer yearMin, Integer yearMax) {
+                              long failedPapers, long causalExtractedPapers, long causalNoCausalPapers,
+                              long causalPendingReviewPapers, long causalExtractingPapers, long causalFailedPapers,
+                              long causalNotExtractedPapers, long causalClaims, Integer yearMin, Integer yearMax) {
         static CorpusOverviewView from(CorpusJournalOverview source) {
             return new CorpusOverviewView(source.totalJournals(), source.totalPapers(), source.publishedPapers(),
-                    source.matchedPapers(), source.failedPapers(), source.yearMin(), source.yearMax());
+                    source.matchedPapers(), source.failedPapers(), source.causalExtractedPapers(),
+                    source.causalNoCausalPapers(), source.causalPendingReviewPapers(), source.causalExtractingPapers(),
+                    source.causalFailedPapers(), source.causalNotExtractedPapers(), source.causalClaims(),
+                    source.yearMin(), source.yearMax());
         }
     }
 
     record JournalSummaryView(String sourceId, String name, long totalPapers, long archivedPapers,
                               long publishedCount, long readyCount, long unprocessedCount, long failedCount,
-                              long unsupportedCount, long matchedCount, long causalExtractedCount, Integer yearMin, Integer yearMax,
-                              OffsetDateTime latestUpdatedAt) {
+                              long unsupportedCount, long matchedCount, long causalExtractedCount,
+                              long causalNoCausalCount, long causalPendingReviewCount, long causalExtractingCount,
+                              long causalFailedCount, long causalNotExtractedCount, long causalClaimCount,
+                              Integer yearMin, Integer yearMax, OffsetDateTime latestUpdatedAt) {
         static JournalSummaryView from(JournalSummary source) {
             return new JournalSummaryView(source.sourceId(), source.name(), source.totalPapers(),
                     source.archivedPapers(), source.publishedCount(), source.readyCount(), source.unprocessedCount(),
-                    source.failedCount(), source.unsupportedCount(), source.matchedCount(), source.causalExtractedCount(),
-                    source.yearMin(), source.yearMax(), source.latestUpdatedAt());
+                    source.failedCount(), source.unsupportedCount(), source.matchedCount(),
+                    source.causalExtractedCount(), source.causalNoCausalCount(), source.causalPendingReviewCount(),
+                    source.causalExtractingCount(), source.causalFailedCount(), source.causalNotExtractedCount(),
+                    source.causalClaimCount(), source.yearMin(), source.yearMax(), source.latestUpdatedAt());
         }
     }
 
@@ -69,10 +78,10 @@ public class JournalController {
                               @RequestParam(defaultValue = "0") int page,
                               @RequestParam(defaultValue = "20") int size) {
         long offset = Page.offset(page, size);
-        var criteria = new JournalFilter(q, filter, sort);
-        var items = journals.list(criteria, offset, size).stream().map(JournalSummaryView::from).toList();
-        return new JournalDirectoryView(items, page, size, journals.count(criteria),
-                CorpusOverviewView.from(journals.overview()));
+        var directory = journals.directory(new JournalFilter(q, filter, sort), offset, size);
+        var items = directory.items().stream().map(JournalSummaryView::from).toList();
+        return new JournalDirectoryView(items, page, size, directory.total(),
+                CorpusOverviewView.from(directory.overview()));
     }
 
     @GetMapping("/{sourceId}")
